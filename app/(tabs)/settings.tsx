@@ -1,122 +1,107 @@
-import { useMemo, useState } from "react";
-import { StyleSheet, Switch, Text, TextInput, View } from "react-native";
-import { ThemeMode } from "../../src/types/enums";
+import { useState } from "react";
 import {
-  DEFAULT_EFFICIENCY_KWH_PER_100KM,
-  DEFAULT_RESERVE_PERCENT,
-} from "../../src/utils/constants";
-
-interface ThemePalette {
-  background: string;
-  card: string;
-  text: string;
-  subtitle: string;
-  title: string;
-}
+  View,
+  Text,
+  StyleSheet,
+  Switch,
+  TouchableOpacity,
+  Alert,
+} from "react-native";
+import Slider from "@react-native-community/slider";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 
 export default function SettingsScreen() {
-  const [defaultReservePercent, setDefaultReservePercent] = useState(
-    String(DEFAULT_RESERVE_PERCENT)
-  );
-  const [defaultEfficiency, setDefaultEfficiency] = useState(
-    String(DEFAULT_EFFICIENCY_KWH_PER_100KM)
-  );
-  const [themeMode, setThemeMode] = useState<ThemeMode>(ThemeMode.LIGHT);
+  const [reservePercent, setReservePercent] = useState(10);
+  const [efficiency, setEfficiency] = useState(18);
+  const [darkMode, setDarkMode] = useState(false);
 
-  const isDark = themeMode === ThemeMode.DARK;
+  const palette = {
+    background: darkMode ? "#111827" : "#F5F7FA",
+    card: darkMode ? "#1F2937" : "#FFFFFF",
+    text: darkMode ? "#F9FAFB" : "#111827",
+  };
 
-  const palette = useMemo<ThemePalette>(() => {
-    if (isDark) {
-      return {
-        background: "#111827",
-        card: "#1F2937",
-        text: "#F9FAFB",
-        subtitle: "#D1D5DB",
-        title: "#A7F3D0",
-      };
-    }
-
-    return {
-      background: "#F3F5F7",
-      card: "#FFFFFF",
-      text: "#111827",
-      subtitle: "#6B7280",
-      title: "#0E7A56",
-    };
-  }, [isDark]);
+  const saveSettings = () => {
+    Alert.alert("Settings Saved");
+  };
 
   return (
     <View style={[styles.container, { backgroundColor: palette.background }]}>
-      <Text style={[styles.title, { color: palette.title }]}>Settings</Text>
+      <Text style={[styles.title, { color: palette.text }]}>
+        Settings
+      </Text>
 
       <View style={[styles.card, { backgroundColor: palette.card }]}>
-        <Text style={[styles.label, { color: palette.text }]}>Default Safety Reserve (%)</Text>
-        <TextInput
-          value={defaultReservePercent}
-          onChangeText={setDefaultReservePercent}
-          keyboardType="numeric"
-          style={[styles.input, { color: palette.text, borderColor: palette.subtitle }]}
+        <View style={styles.row}>
+          <MaterialCommunityIcons name="battery" size={22} color="#0E7A56" />
+          <Text style={{ color: palette.text }}>
+            Safety Reserve: {reservePercent}%
+          </Text>
+        </View>
+
+        <Slider
+          minimumValue={5}
+          maximumValue={30}
+          value={reservePercent}
+          onValueChange={setReservePercent}
         />
       </View>
 
       <View style={[styles.card, { backgroundColor: palette.card }]}>
-        <Text style={[styles.label, { color: palette.text }]}>Default Efficiency (kWh/100km)</Text>
-        <TextInput
-          value={defaultEfficiency}
-          onChangeText={setDefaultEfficiency}
-          keyboardType="numeric"
-          style={[styles.input, { color: palette.text, borderColor: palette.subtitle }]}
+        <View style={styles.row}>
+          <MaterialCommunityIcons name="flash" size={22} color="#0E7A56" />
+          <Text style={{ color: palette.text }}>
+            Efficiency: {efficiency} kWh/100km
+          </Text>
+        </View>
+
+        <Slider
+          minimumValue={12}
+          maximumValue={25}
+          value={efficiency}
+          onValueChange={setEfficiency}
         />
       </View>
 
       <View style={[styles.card, styles.row, { backgroundColor: palette.card }]}>
-        <Text style={[styles.label, { color: palette.text }]}>Theme ({themeMode})</Text>
-        <Switch
-          value={isDark}
-          onValueChange={(enabled) =>
-            setThemeMode(enabled ? ThemeMode.DARK : ThemeMode.LIGHT)
-          }
-        />
+        <Text style={{ color: palette.text }}>Dark Mode</Text>
+        <Switch value={darkMode} onValueChange={setDarkMode} />
       </View>
 
-      <Text style={[styles.helperText, { color: palette.subtitle }]}>These settings are local state only.</Text>
+      <TouchableOpacity style={styles.saveBtn} onPress={saveSettings}>
+        <Text style={styles.saveText}>Save Settings</Text>
+      </TouchableOpacity>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    padding: 20,
-  },
+  container: { flex: 1, padding: 20 },
   title: {
-    fontSize: 24,
-    fontWeight: "700",
-    marginBottom: 18,
+    fontSize: 26,
+    fontWeight: "800",
+    marginBottom: 20,
   },
   card: {
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 12,
-    gap: 8,
+    padding: 18,
+    borderRadius: 20,
+    marginBottom: 15,
+    elevation: 6,
   },
   row: {
     flexDirection: "row",
+    alignItems: "center",
     justifyContent: "space-between",
+  },
+  saveBtn: {
+    marginTop: 20,
+    backgroundColor: "#0E7A56",
+    padding: 18,
+    borderRadius: 18,
     alignItems: "center",
   },
-  label: {
-    fontWeight: "600",
-  },
-  input: {
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    backgroundColor: "transparent",
-  },
-  helperText: {
-    marginTop: 4,
-    fontSize: 12,
+  saveText: {
+    color: "white",
+    fontWeight: "700",
   },
 });

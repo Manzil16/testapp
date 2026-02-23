@@ -16,6 +16,10 @@ function clampPercent(value: number): number {
   return Math.min(BATTERY_PERCENT_MAX, Math.max(BATTERY_PERCENT_MIN, value));
 }
 
+/* ===========================
+   EXISTING TRIP LOGIC
+=========================== */
+
 export function calculateEnergyRequired(
   distanceKm: number,
   efficiencyKWhPer100Km: number
@@ -50,11 +54,13 @@ export function calculateTripResult(input: TripInput): TripResult {
     input.distanceKm,
     input.efficiencyKWhPer100Km
   );
+
   const arrivalBattery = calculateArrivalBattery(
     input.currentBatteryPercent,
     energyRequired,
     input.batteryCapacityKWh
   );
+
   const needsCharging = isChargingRequired(
     arrivalBattery,
     input.safetyReservePercent
@@ -77,4 +83,32 @@ export function calculateTripResult(input: TripInput): TripResult {
 
 export function getLastTripCalculation(): TripCalculationSnapshot | null {
   return lastTripCalculation;
+}
+
+/* ===========================
+   NEW REAL-TIME SIMULATION LOGIC
+=========================== */
+
+export function calculateRealtimeConsumption(
+  speedKmh: number,
+  distanceMeters: number,
+  gyroData: { x: number; y: number; z: number }
+): number {
+  const distanceKm = distanceMeters / 1000;
+
+  const baseConsumption = 0.18; // realistic EV avg
+
+  const speedPenalty = speedKmh > 100 ? 0.05 : 0.02;
+
+  const aggressiveFactor =
+    Math.abs(gyroData.x) +
+    Math.abs(gyroData.y) +
+    Math.abs(gyroData.z);
+
+  const aggressivePenalty = aggressiveFactor * 0.005;
+
+  const totalConsumption =
+    baseConsumption + speedPenalty + aggressivePenalty;
+
+  return distanceKm * totalConsumption;
 }

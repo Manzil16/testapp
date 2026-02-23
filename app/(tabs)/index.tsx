@@ -1,32 +1,36 @@
 import { useFocusEffect } from "@react-navigation/native";
 import { useCallback, useMemo, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { MOCK_CHARGERS } from "../../src/services/chargerService";
+import { useChargerStore } from "../../src/store/useChargerStore";
 import {
   getLastTripCalculation,
   type TripCalculationSnapshot,
 } from "../../src/services/energyService";
-import { ChargerType } from "../../src/types/enums";
 import { APP_COLORS, DEFAULT_VEHICLE } from "../../src/utils/constants";
 
 export default function HomeScreen() {
+  const chargers = useChargerStore((state) => state.chargers);
+
   const [lastCalculation, setLastCalculation] =
     useState<TripCalculationSnapshot | null>(getLastTripCalculation());
 
   const chargerSummary = useMemo(() => {
-    const fastChargerCount = MOCK_CHARGERS.filter(
-      (charger) => charger.type === ChargerType.FAST
+    const fastChargerCount = chargers.filter(
+      (charger) => charger.powerKw >= 150
     ).length;
-    const highestPower = MOCK_CHARGERS.reduce((maxPower, charger) => {
-      return Math.max(maxPower, charger.power);
-    }, 0);
+
+    const highestPower = chargers.reduce(
+      (maxPower: number, charger) =>
+        Math.max(maxPower, charger.powerKw),
+      0
+    );
 
     return {
-      totalChargers: MOCK_CHARGERS.length,
+      totalChargers: chargers.length,
       fastChargerCount,
       highestPower,
     };
-  }, []);
+  }, [chargers]);
 
   useFocusEffect(
     useCallback(() => {
@@ -37,13 +41,17 @@ export default function HomeScreen() {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>EV Trip Planner</Text>
-      <Text style={styles.subtitle}>Clean architecture demo with in-memory state</Text>
+      <Text style={styles.subtitle}>
+        Commercial-ready EV navigation prototype
+      </Text>
 
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>Network Summary</Text>
         <Text>Total chargers: {chargerSummary.totalChargers}</Text>
         <Text>Fast chargers: {chargerSummary.fastChargerCount}</Text>
-        <Text>Max charger power: {chargerSummary.highestPower} kW</Text>
+        <Text>
+          Max charger power: {chargerSummary.highestPower} kW
+        </Text>
       </View>
 
       <View style={styles.card}>
@@ -53,7 +61,9 @@ export default function HomeScreen() {
         <Text>
           Efficiency: {DEFAULT_VEHICLE.efficiencyKWhPer100Km} kWh/100km
         </Text>
-        <Text>Default reserve: {DEFAULT_VEHICLE.defaultReservePercent}%</Text>
+        <Text>
+          Default reserve: {DEFAULT_VEHICLE.defaultReservePercent}%
+        </Text>
       </View>
 
       <View style={styles.card}>
@@ -61,13 +71,18 @@ export default function HomeScreen() {
         {lastCalculation ? (
           <>
             <Text>
-              Energy required: {lastCalculation.result.energyRequired.toFixed(2)} kWh
+              Energy required:{" "}
+              {lastCalculation.result.energyRequired.toFixed(2)} kWh
             </Text>
             <Text>
-              Arrival battery: {lastCalculation.result.arrivalBattery.toFixed(2)}%
+              Arrival battery:{" "}
+              {lastCalculation.result.arrivalBattery.toFixed(2)}%
             </Text>
             <Text>
-              Charging required: {lastCalculation.result.needsCharging ? "Yes" : "No"}
+              Charging required:{" "}
+              {lastCalculation.result.needsCharging
+                ? "Yes"
+                : "No"}
             </Text>
           </>
         ) : (

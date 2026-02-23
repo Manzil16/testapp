@@ -4,19 +4,23 @@ import {
   Text,
   TextInput,
   StyleSheet,
-  Button,
   FlatList,
   TouchableOpacity,
   Alert,
+  ActivityIndicator,
+  ScrollView,
 } from "react-native";
 import { searchAddress, GeoResult } from "../../src/services/geocodingService";
-import { getRouteDistanceKm } from "../../src/services/routingService";
+import { getRouteData } from "../../src/services/routingService";
 import { useChargerStore } from "../../src/store/useChargerStore";
+import { useTripStore } from "../../src/store/useTripStore";
 import { useRouter } from "expo-router";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 
 export default function TripScreen() {
   const router = useRouter();
   const chargers = useChargerStore((state) => state.chargers);
+  const setTripData = useTripStore((state) => state.setTripData);
 
   const [fromQuery, setFromQuery] = useState("");
   const [toQuery, setToQuery] = useState("");
@@ -28,12 +32,20 @@ export default function TripScreen() {
   const [distanceKm, setDistanceKm] = useState<number | null>(null);
   const [arrivalPercent, setArrivalPercent] = useState<number | null>(null);
   const [recommendedCharger, setRecommendedCharger] = useState<any>(null);
-  const [backupCharger, setBackupCharger] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
 
   const batteryCapacityKwh = 60;
   const efficiencyKwhPer100Km = 18;
   const currentBatteryPercent = 60;
   const safetyBufferPercent = 10;
+
+  const swapLocations = () => {
+    const temp = fromLocation;
+    setFromLocation(toLocation);
+    setToLocation(temp);
+    setFromQuery(toQuery);
+    setToQuery(fromQuery);
+  };
 
   const handleSearchFrom = async (text: string) => {
     setFromQuery(text);
@@ -49,218 +61,263 @@ export default function TripScreen() {
 
   const calculateTrip = async () => {
     if (!fromLocation || !toLocation) {
-      Alert.alert("Please select both locations");
+      Alert.alert("Select both locations");
       return;
     }
 
-    const distance = await getRouteDistanceKm(
+    setLoading(true);
+
+    const route = await getRouteData(
       fromLocation.latitude,
       fromLocation.longitude,
       toLocation.latitude,
       toLocation.longitude
     );
 
-    if (!distance || distance <= 0) {
-      Alert.alert("Could not calculate route");
+    if (!route) {
+      setLoading(false);
+      Alert.alert("Route failed");
       return;
     }
 
-    setDistanceKm(distance);
+    setDistanceKm(route.distanceKm);
 
-    const uncertaintyFactor = 1.08;
-    const terrainFactor = 1.05;
-
-    const effectiveEfficiency =
-      efficiencyKwhPer100Km * uncertaintyFactor * terrainFactor;
-
-    const energyNeeded = (distance * effectiveEfficiency) / 100;
+    const energyNeeded =
+      (route.distanceKm * efficiencyKwhPer100Km) / 100;
 
     const availableEnergy =
       (batteryCapacityKwh * currentBatteryPercent) / 100;
 
     const remainingEnergy = availableEnergy - energyNeeded;
-
     const arrival =
       (remainingEnergy / batteryCapacityKwh) * 100;
 
     setArrivalPercent(arrival);
 
-    if (arrival > safetyBufferPercent) {
-      setRecommendedCharger(null);
-      setBackupCharger(null);
-      return;
+    let selectedCharger = null;
+
+    if (arrival <= safetyBufferPercent) {
+      selectedCharger = chargers
+        .filter((c) => c.status !== "flagged")
+        .sort((a, b) => b.powerKw - a.powerKw)[0];
     }
 
-    const trustedChargers = chargers
-      .filter(
-        (c) =>
-          c.status !== "flagged" &&
-          c.verificationScore > 30
-      )
-      .sort((a, b) => b.powerKw - a.powerKw);
+    setRecommendedCharger(selectedCharger);
 
-    if (trustedChargers.length === 0) {
-      setRecommendedCharger(null);
-      return;
-    }
+    setTripData({
+      origin: {
+    name: fromLocation.displayName,
+    latitude: fromLocation.latitude,
+    longitude: fromLocation.longitude,
+  },
+  destination: {
+    name: toLocation.displayName,
+    latitude: toLocation.latitude,
+    longitude: toLocation.longitude,
+  },
+      distanceKm: route.distanceKm,
+      durationMinutes: route.durationMinutes,
+      polyline: route.polyline,
+      predictedArrivalPercent: arrival,
+      recommendedCharger: selectedCharger,
+      tripActive: true,
+    });
 
-    setRecommendedCharger(trustedChargers[0]);
-    setBackupCharger(trustedChargers[1] || null);
+    setLoading(false);
   };
 
-  const renderResult = () => {
-    if (distanceKm === null || arrivalPercent === null) return null;
-
-    const lower = arrivalPercent - 4;
-    const upper = arrivalPercent + 4;
-
-    const directSafe = arrivalPercent > safetyBufferPercent;
-
-    return (
-      <View style={styles.resultBox}>
-        <Text style={styles.resultTitle}>Trip Summary</Text>
-
-        <Text>Distance: {distanceKm.toFixed(1)} km</Text>
-        <Text>
-          Estimated arrival: {lower.toFixed(0)}% –{" "}
-          {upper.toFixed(0)}%
-        </Text>
-
-        {!directSafe && recommendedCharger && (
-          <>
-            <Text style={styles.sectionTitle}>
-              Recommended Stop
-            </Text>
-            <Text>{recommendedCharger.name}</Text>
-            <Text>{recommendedCharger.powerKw} kW</Text>
-
-            {backupCharger && (
-              <>
-                <Text style={styles.sectionTitle}>
-                  Backup Option
-                </Text>
-                <Text>{backupCharger.name}</Text>
-              </>
-            )}
-          </>
-        )}
-
-        <View style={{ marginTop: 15 }}>
-          {!directSafe && recommendedCharger && (
-            <Button
-              title="Start Trip (Recommended)"
-              onPress={() =>
-                router.push("/trip-plan" as any)
-              }
-            />
-          )}
-
-          <View style={{ height: 10 }} />
-
-          <Button
-            title="Start Trip (Direct)"
-            disabled={!directSafe}
-            onPress={() =>
-              router.push("/trip-plan" as any)
-            }
-          />
-        </View>
-      </View>
-    );
+  const getArrivalColor = () => {
+    if (!arrivalPercent) return "#000";
+    if (arrivalPercent > 20) return "#0E7A56";
+    if (arrivalPercent > 10) return "#F59E0B";
+    return "#EF4444";
   };
 
   return (
-    <View style={styles.container}>
+    <ScrollView style={styles.container}>
       <Text style={styles.title}>Plan Your Trip</Text>
 
-      <TextInput
-        placeholder="From"
-        style={styles.input}
-        value={fromQuery}
-        onChangeText={handleSearchFrom}
-      />
+      {/* FROM */}
+      <View style={styles.card}>
+        <Text style={styles.label}>From</Text>
+        <TextInput
+          placeholder="Start location"
+          style={styles.input}
+          value={fromQuery}
+          onChangeText={handleSearchFrom}
+        />
 
-      <FlatList
-        data={fromResults}
-        keyExtractor={(item) => item.displayName}
-        renderItem={({ item }) => (
+        <FlatList
+          data={fromResults}
+          keyExtractor={(item, i) => item.displayName + i}
+          renderItem={({ item }) => (
+            <TouchableOpacity
+              style={styles.resultItem}
+              onPress={() => {
+                setFromLocation(item);
+                setFromResults([]);
+                setFromQuery(item.displayName);
+              }}
+            >
+              <Text>{item.displayName}</Text>
+            </TouchableOpacity>
+          )}
+        />
+      </View>
+
+      {/* Swap Button */}
+      <TouchableOpacity style={styles.swapBtn} onPress={swapLocations}>
+        <MaterialCommunityIcons
+          name="swap-vertical"
+          size={22}
+          color="white"
+        />
+      </TouchableOpacity>
+
+      {/* TO */}
+      <View style={styles.card}>
+        <Text style={styles.label}>To</Text>
+        <TextInput
+          placeholder="Destination"
+          style={styles.input}
+          value={toQuery}
+          onChangeText={handleSearchTo}
+        />
+
+        <FlatList
+          data={toResults}
+          keyExtractor={(item, i) => item.displayName + i}
+          renderItem={({ item }) => (
+            <TouchableOpacity
+              style={styles.resultItem}
+              onPress={() => {
+                setToLocation(item);
+                setToResults([]);
+                setToQuery(item.displayName);
+              }}
+            >
+              <Text>{item.displayName}</Text>
+            </TouchableOpacity>
+          )}
+        />
+      </View>
+
+      {loading ? (
+        <ActivityIndicator size="large" style={{ marginTop: 20 }} />
+      ) : (
+        <TouchableOpacity
+          style={styles.primaryBtn}
+          onPress={calculateTrip}
+        >
+          <Text style={styles.primaryText}>Calculate Trip</Text>
+        </TouchableOpacity>
+      )}
+
+      {distanceKm && arrivalPercent !== null && (
+        <View style={styles.summaryCard}>
+          <Text style={styles.summaryTitle}>Trip Summary</Text>
+          <Text>Distance: {distanceKm.toFixed(1)} km</Text>
+          <Text style={{ color: getArrivalColor(), fontWeight: "700" }}>
+            Arrival Battery: {arrivalPercent.toFixed(1)}%
+          </Text>
+
+          {recommendedCharger && (
+            <>
+              <Text style={styles.sectionTitle}>
+                Recommended Charger
+              </Text>
+              <Text>{recommendedCharger.name}</Text>
+              <Text>{recommendedCharger.powerKw} kW</Text>
+            </>
+          )}
+
           <TouchableOpacity
-            onPress={() => {
-              setFromLocation(item);
-              setFromResults([]);
-              setFromQuery(item.displayName);
-            }}
+            style={styles.secondaryBtn}
+            onPress={() => router.push("/trip-plan" as any)}
           >
-            <Text style={styles.resultItem}>
-              {item.displayName}
-            </Text>
+            <Text style={styles.secondaryText}>Start Navigation</Text>
           </TouchableOpacity>
-        )}
-      />
-
-      <TextInput
-        placeholder="To"
-        style={styles.input}
-        value={toQuery}
-        onChangeText={handleSearchTo}
-      />
-
-      <FlatList
-        data={toResults}
-        keyExtractor={(item) => item.displayName}
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            onPress={() => {
-              setToLocation(item);
-              setToResults([]);
-              setToQuery(item.displayName);
-            }}
-          >
-            <Text style={styles.resultItem}>
-              {item.displayName}
-            </Text>
-          </TouchableOpacity>
-        )}
-      />
-
-      <Button title="Calculate Trip" onPress={calculateTrip} />
-
-      {renderResult()}
-    </View>
+        </View>
+      )}
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20 },
+  container: {
+    flex: 1,
+    backgroundColor: "#F5F7FA",
+    padding: 20,
+  },
   title: {
-    fontSize: 20,
-    fontWeight: "bold",
-    marginBottom: 15,
+    fontSize: 26,
+    fontWeight: "800",
+    marginBottom: 20,
+  },
+  card: {
+    backgroundColor: "#FFFFFF",
+    padding: 16,
+    borderRadius: 18,
+    elevation: 6,
+    marginBottom: 12,
+  },
+  label: {
+    fontWeight: "600",
+    marginBottom: 6,
   },
   input: {
-    borderWidth: 1,
-    borderColor: "#ccc",
-    padding: 10,
-    marginBottom: 10,
-    borderRadius: 6,
+    backgroundColor: "#F3F4F6",
+    padding: 14,
+    borderRadius: 12,
   },
   resultItem: {
-    padding: 8,
-    backgroundColor: "#eee",
-    marginBottom: 5,
+    padding: 10,
+    borderBottomWidth: 0.5,
+    borderColor: "#E5E7EB",
   },
-  resultBox: {
+  swapBtn: {
+    alignSelf: "center",
+    backgroundColor: "#0E7A56",
+    padding: 10,
+    borderRadius: 30,
+    marginBottom: 10,
+  },
+  primaryBtn: {
+    backgroundColor: "#0E7A56",
+    padding: 18,
+    borderRadius: 18,
+    alignItems: "center",
+    marginTop: 10,
+  },
+  primaryText: {
+    color: "white",
+    fontWeight: "700",
+  },
+  summaryCard: {
+    backgroundColor: "white",
+    padding: 20,
+    borderRadius: 20,
     marginTop: 20,
-    padding: 15,
-    backgroundColor: "#f5f5f5",
-    borderRadius: 8,
+    elevation: 8,
   },
-  resultTitle: {
-    fontWeight: "bold",
+  summaryTitle: {
+    fontSize: 18,
+    fontWeight: "700",
     marginBottom: 10,
   },
   sectionTitle: {
     marginTop: 10,
-    fontWeight: "bold",
+    fontWeight: "700",
+  },
+  secondaryBtn: {
+    marginTop: 15,
+    backgroundColor: "#111827",
+    padding: 14,
+    borderRadius: 14,
+    alignItems: "center",
+  },
+  secondaryText: {
+    color: "white",
+    fontWeight: "600",
   },
 });

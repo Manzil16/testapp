@@ -1,42 +1,72 @@
-import { View, StyleSheet, Button, Text, TouchableOpacity } from "react-native";
+import {
+  View,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  ActivityIndicator,
+} from "react-native";
 import MapView, { Marker } from "react-native-maps";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import { useChargerStore } from "../../src/store/useChargerStore";
-import { Charger } from "../../src/models/Charger";
+import * as Location from "expo-location";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { listenToChargers, Charger } from "../../src/services/firestoreService";
 
 export default function MapsScreen() {
   const router = useRouter();
 
-  const chargers = useChargerStore((state) => state.chargers);
-  const seedIfEmpty = useChargerStore((state) => state.seedIfEmpty);
-  const confirmWorking = useChargerStore((state) => state.confirmWorking);
-  const reportBroken = useChargerStore((state) => state.reportBroken);
-
+  const [chargers, setChargers] = useState<Charger[]>([]);
   const [selected, setSelected] = useState<Charger | null>(null);
+  const [location, setLocation] =
+    useState<Location.LocationObject | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  /* ---------------- FETCH CHARGERS ---------------- */
 
   useEffect(() => {
-    seedIfEmpty();
+    const unsubscribe = listenToChargers((data) => {
+      setChargers(data);
+      setLoading(false);
+    });
+
+    return unsubscribe;
   }, []);
 
-  const getPinColor = (charger: Charger) => {
-    if (charger.status === "flagged") return "gray";
-    if (charger.status === "verified") return "green";
-    return "orange"; // community
-  };
+  /* ---------------- USER LOCATION ---------------- */
+
+  useEffect(() => {
+    (async () => {
+      const { status } =
+        await Location.requestForegroundPermissionsAsync();
+      if (status === "granted") {
+        const loc = await Location.getCurrentPositionAsync({});
+        setLocation(loc);
+      }
+    })();
+  }, []);
+
+  if (loading) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" />
+        <Text>Loading chargers...</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
       <MapView
         style={styles.map}
+        showsUserLocation
         initialRegion={{
-          latitude: -33.8688,
-          longitude: 151.2093,
+          latitude: location?.coords.latitude || -33.8688,
+          longitude: location?.coords.longitude || 151.2093,
           latitudeDelta: 0.05,
           longitudeDelta: 0.05,
         }}
       >
-        {chargers.map((charger: Charger) => (
+        {chargers.map((charger) => (
           <Marker
             key={charger.id}
             coordinate={{
@@ -44,65 +74,71 @@ export default function MapsScreen() {
               longitude: charger.longitude,
             }}
             title={charger.name}
-            description={`${charger.powerKw} kW • ${charger.connectorType}`}
-            pinColor={getPinColor(charger)}
+            description={`${charger.speedCategory}`}
             onPress={() => setSelected(charger)}
           />
         ))}
       </MapView>
 
-      {/* Bottom Info Card */}
+      {/* ---------------- INFO CARD ---------------- */}
+
       {selected && (
         <View style={styles.card}>
-          <Text style={styles.title}>{selected.name}</Text>
-          <Text style={styles.subtitle}>{selected.address}</Text>
-          <Text style={styles.meta}>
-            {selected.powerKw} kW • {selected.connectorType}
-          </Text>
-          <Text style={styles.meta}>
-            Reliability: {selected.verificationScore}%
-          </Text>
-          <Text style={styles.meta}>
-            Status: {selected.status.toUpperCase()}
-          </Text>
+          <Text style={styles.cardTitle}>{selected.name}</Text>
 
-          <View style={styles.actions}>
-            <TouchableOpacity
-              style={styles.confirmBtn}
-              onPress={() => confirmWorking(selected.id)}
-            >
-              <Text style={styles.actionText}>Confirm Working</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.reportBtn}
-              onPress={() => reportBroken(selected.id)}
-            >
-              <Text style={styles.actionText}>Report Broken</Text>
-            </TouchableOpacity>
+          <View style={styles.row}>
+            <MaterialCommunityIcons
+              name="ev-station"
+              size={18}
+              color="#0E7A56"
+            />
+            <Text>{selected.networkType}</Text>
           </View>
+
+          {selected.connectors?.map((c, index) => (
+            <View key={index} style={styles.row}>
+              <MaterialCommunityIcons
+                name="flash"
+                size={18}
+                color="#0E7A56"
+              />
+              <Text>
+                {c.type} — {c.powerKW} kW
+              </Text>
+            </View>
+          ))}
+
+          <TouchableOpacity
+            style={styles.primaryBtn}
+            onPress={() => setSelected(null)}
+          >
+            <Text style={styles.primaryText}>Close</Text>
+          </TouchableOpacity>
         </View>
       )}
 
-      <View style={styles.button}>
-        <Button
-          title="Add Charger"
-          onPress={() => router.push("/(tabs)/add-charger")}
-        />
-      </View>
+      {/* ---------------- ADD BUTTON ---------------- */}
+
+      <TouchableOpacity
+        style={styles.fab}
+        onPress={() => router.push("/(tabs)/add-charger")}
+      >
+        <MaterialCommunityIcons name="plus" size={24} color="white" />
+      </TouchableOpacity>
     </View>
   );
 }
 
+/* ---------------- STYLES ---------------- */
+
 const styles = StyleSheet.create({
   container: { flex: 1 },
-
   map: { flex: 1 },
 
-  button: {
-    position: "absolute",
-    bottom: 40,
-    alignSelf: "center",
+  center: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
   },
 
   card: {
@@ -110,47 +146,45 @@ const styles = StyleSheet.create({
     bottom: 100,
     left: 20,
     right: 20,
-    backgroundColor: "white",
-    padding: 16,
-    borderRadius: 12,
-    elevation: 5,
+    backgroundColor: "#FFFFFF",
+    padding: 20,
+    borderRadius: 20,
+    elevation: 8,
   },
 
-  title: {
-    fontSize: 16,
-    fontWeight: "bold",
+  cardTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    marginBottom: 10,
   },
 
-  subtitle: {
-    fontSize: 14,
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
     marginBottom: 6,
   },
 
-  meta: {
-    fontSize: 13,
-    marginBottom: 4,
+  primaryBtn: {
+    marginTop: 12,
+    backgroundColor: "#0E7A56",
+    padding: 12,
+    borderRadius: 14,
+    alignItems: "center",
   },
 
-  actions: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 10,
-  },
-
-  confirmBtn: {
-    backgroundColor: "green",
-    padding: 8,
-    borderRadius: 6,
-  },
-
-  reportBtn: {
-    backgroundColor: "red",
-    padding: 8,
-    borderRadius: 6,
-  },
-
-  actionText: {
+  primaryText: {
     color: "white",
-    fontSize: 12,
+    fontWeight: "600",
+  },
+
+  fab: {
+    position: "absolute",
+    bottom: 40,
+    right: 20,
+    backgroundColor: "#0E7A56",
+    padding: 18,
+    borderRadius: 30,
+    elevation: 8,
   },
 });

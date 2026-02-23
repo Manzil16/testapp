@@ -7,13 +7,14 @@ export interface GeoResult {
 export async function searchAddress(query: string): Promise<GeoResult[]> {
   if (!query || query.length < 3) return [];
 
-  const url =
-    "https://nominatim.openstreetmap.org/search?" +
-    new URLSearchParams({
-      q: query,
-      format: "json",
-      limit: "5",
-    }).toString();
+ const url =
+  "https://nominatim.openstreetmap.org/search?" +
+  new URLSearchParams({
+    q: query,
+    format: "json",
+    limit: "5",
+    countrycodes: "au", // 🇦🇺 restrict to Australia
+  }).toString();
 
   const response = await fetch(url, {
     headers: {
