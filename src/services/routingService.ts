@@ -4,29 +4,84 @@ export interface RouteData {
   polyline: string;
 }
 
+export type RoutingErrorCode =
+  | "NETWORK_ERROR"
+  | "NO_ROUTE"
+  | "INVALID_RESPONSE";
+
+export interface RoutingFailure {
+  ok: false;
+  code: RoutingErrorCode;
+  message: string;
+}
+
+export interface RoutingSuccess extends RouteData {
+  ok: true;
+}
+
+export type RoutingResult = RoutingSuccess | RoutingFailure;
+
 export async function getRouteData(
   fromLat: number,
   fromLng: number,
   toLat: number,
-  toLng: number
-): Promise<RouteData | null> {
+  toLng: number,
+  signal?: AbortSignal
+): Promise<RoutingResult> {
   try {
     const url =
       `https://router.project-osrm.org/route/v1/driving/` +
       `${fromLng},${fromLat};${toLng},${toLat}` +
       `?overview=full&geometries=polyline`;
 
-    const response = await fetch(url);
-    const data = await response.json();
+    const response = await fetch(url, { signal });
 
-    const route = data.routes[0];
+    if (!response.ok) {
+      return {
+        ok: false,
+        code: "NETWORK_ERROR",
+        message: `Routing request failed with status ${response.status}.`,
+      };
+    }
+
+    const data = (await response.json()) as {
+      routes?: { distance?: number; duration?: number; geometry?: string }[];
+    };
+
+    const route = data.routes?.[0];
+
+    if (
+      !route ||
+      typeof route.distance !== "number" ||
+      typeof route.duration !== "number" ||
+      typeof route.geometry !== "string"
+    ) {
+      return {
+        ok: false,
+        code: "NO_ROUTE",
+        message: "No valid route was found between the selected locations.",
+      };
+    }
 
     return {
+      ok: true,
       distanceKm: route.distance / 1000,
       durationMinutes: route.duration / 60,
       polyline: route.geometry,
     };
   } catch (error) {
-    return null;
+    if (error instanceof Error && error.name === "AbortError") {
+      return {
+        ok: false,
+        code: "INVALID_RESPONSE",
+        message: "Routing request was canceled.",
+      };
+    }
+
+    return {
+      ok: false,
+      code: "NETWORK_ERROR",
+      message: "Unable to reach routing service. Check connection and try again.",
+    };
   }
 }

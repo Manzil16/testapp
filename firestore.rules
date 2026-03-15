@@ -1,0 +1,139 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helper functions ──────────────────────────────────────────────
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function getUserRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && getUserRole() == 'admin';
+    }
+
+    // ── Users ─────────────────────────────────────────────────────────
+    // Any authenticated user can read profiles (needed for host info,
+    // booking partner names, etc.). Only owner or admin can write.
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ── Chargers ──────────────────────────────────────────────────────
+    // All authenticated users can read chargers (marketplace data).
+    // Client-side filtering hides non-approved chargers from drivers.
+    // Hosts can CRUD their own chargers. Admins can write all.
+    match /chargers/{chargerId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() &&
+        request.resource.data.hostUserId == request.auth.uid;
+      allow update: if isAuthenticated() && (
+        resource.data.hostUserId == request.auth.uid ||
+        isAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+
+    // ── Bookings ──────────────────────────────────────────────────────
+    // Drivers can create bookings and read their own.
+    // Hosts can read bookings for their chargers.
+    // Both driver and host can update (status changes).
+    // Admins can read/write all.
+    match /bookings/{bookingId} {
+      allow read: if isAuthenticated() && (
+        resource.data.driverUserId == request.auth.uid ||
+        resource.data.hostUserId == request.auth.uid ||
+        isAdmin()
+      );
+      allow create: if isAuthenticated() &&
+        request.resource.data.driverUserId == request.auth.uid;
+      allow update: if isAuthenticated() && (
+        resource.data.driverUserId == request.auth.uid ||
+        resource.data.hostUserId == request.auth.uid ||
+        isAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+
+    // ── Vehicles ──────────────────────────────────────────────────────
+    // Users can CRUD their own vehicles. Admins can read all.
+    match /vehicles/{vehicleId} {
+      allow read: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid ||
+        isAdmin()
+      );
+      allow create: if isAuthenticated() &&
+        request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid ||
+        isAdmin()
+      );
+    }
+
+    // ── Trips ─────────────────────────────────────────────────────────
+    // Users can CRUD their own trips. Admins can read all.
+    match /trips/{tripId} {
+      allow read: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid ||
+        isAdmin()
+      );
+      allow create: if isAuthenticated() &&
+        request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid ||
+        isAdmin()
+      );
+    }
+
+    // ── Reviews ───────────────────────────────────────────────────────
+    // Any authenticated user can read reviews (public).
+    // Drivers can create reviews. Admins can modify/delete.
+    match /reviews/{reviewId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() &&
+        request.resource.data.driverUserId == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    // ── Notifications ─────────────────────────────────────────────────
+    // Users can read their own notifications. System/admins can create.
+    // Users can update their own (mark read). Admins can do anything.
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid ||
+        isAdmin()
+      );
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid ||
+        isAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+
+    // ── Verification Requests ─────────────────────────────────────────
+    // Hosts can create and read their own verification requests.
+    // Admins can read all and update (approve/reject).
+    match /verificationRequests/{requestId} {
+      allow read: if isAuthenticated() && (
+        resource.data.hostUserId == request.auth.uid ||
+        isAdmin()
+      );
+      allow create: if isAuthenticated() &&
+        request.resource.data.hostUserId == request.auth.uid;
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+  }
+}
