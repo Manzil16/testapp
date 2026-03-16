@@ -1,181 +1,80 @@
-import {
-  doc,
-  getDoc,
-  onSnapshot,
-  serverTimestamp,
-  setDoc,
-  updateDoc,
-  type Timestamp,
-} from "firebase/firestore";
-import { db } from "../../firebaseConfig";
-import type { UpsertUserProfileInput, UserProfile } from "./user.types";
-import {
-  DEV_PREVIEW_MODE,
-  DEV_PREVIEW_STATE,
-  buildDevProfile,
-  isFirebasePermissionError,
-  logDevPreviewFallback,
-} from "../shared/dev-preview";
+import { supabase } from "../../lib/supabase";
+import type { AppRole, UpsertUserProfileInput, UserProfile } from "./user.types";
 
-interface UserProfileDoc {
-  email: string;
-  displayName: string;
-  role: UserProfile["role"];
-  phone?: string;
-  avatarUrl?: string;
-  preferredReservePercent?: number;
-  createdAt?: Timestamp;
-  updatedAt?: Timestamp;
-}
-
-function timestampToIso(value?: Timestamp): string {
-  if (!value) {
-    return new Date().toISOString();
-  }
-
-  return value.toDate().toISOString();
-}
-
-function mapUserProfile(id: string, data: UserProfileDoc): UserProfile {
+function mapRow(row: Record<string, unknown>): UserProfile {
   return {
-    id,
-    email: data.email,
-    displayName: data.displayName,
-    role: data.role,
-    phone: data.phone,
-    avatarUrl: data.avatarUrl,
-    preferredReservePercent: data.preferredReservePercent,
-    createdAtIso: timestampToIso(data.createdAt),
-    updatedAtIso: timestampToIso(data.updatedAt),
+    id: row.id as string,
+    email: row.email as string,
+    displayName: row.display_name as string,
+    role: row.role as AppRole,
+    phone: (row.phone as string) || undefined,
+    avatarUrl: (row.avatar_url as string) || undefined,
+    preferredReservePercent: row.preferred_reserve_percent as number,
+    stripeAccountId: (row.stripe_account_id as string) || undefined,
+    createdAtIso: row.created_at as string,
+    updatedAtIso: row.updated_at as string,
   };
-}
-
-function errorMessage(error: unknown, fallback: string): string {
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
-  return fallback;
-}
-
-function getDevProfile(userId: string): UserProfile {
-  return DEV_PREVIEW_STATE.profiles[userId] || buildDevProfile(userId, "driver");
 }
 
 export async function upsertUserProfile(
   userId: string,
   payload: UpsertUserProfileInput
 ): Promise<void> {
-  const ref = doc(db, "users", userId);
-
-  try {
-    await setDoc(
-      ref,
-      {
-        email: payload.email,
-        displayName: payload.displayName,
-        role: payload.role,
-        phone: payload.phone || "",
-        preferredReservePercent: payload.preferredReservePercent ?? 12,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true }
-    );
-  } catch (error) {
-    if (!DEV_PREVIEW_MODE || !isFirebasePermissionError(error)) {
-      throw error;
-    }
-
-    logDevPreviewFallback("users.upsertUserProfile", error);
-    DEV_PREVIEW_STATE.profiles[userId] = {
-      id: userId,
-      email: payload.email,
-      displayName: payload.displayName,
-      role: payload.role,
-      phone: payload.phone,
-      preferredReservePercent: payload.preferredReservePercent ?? 12,
-      createdAtIso: new Date().toISOString(),
-      updatedAtIso: new Date().toISOString(),
-    };
-  }
+  const { error } = await supabase.from("profiles").upsert({
+    id: userId,
+    email: payload.email,
+    display_name: payload.displayName,
+    role: payload.role,
+    phone: payload.phone || null,
+    preferred_reserve_percent: payload.preferredReservePercent ?? 12,
+  });
+  if (error) throw error;
 }
 
 export async function getUserProfile(userId: string): Promise<UserProfile | null> {
-  const ref = doc(db, "users", userId);
-
-  try {
-    const snapshot = await getDoc(ref);
-
-    if (!snapshot.exists()) {
-      return null;
-    }
-
-    return mapUserProfile(snapshot.id, snapshot.data() as UserProfileDoc);
-  } catch (error) {
-    if (!DEV_PREVIEW_MODE || !isFirebasePermissionError(error)) {
-      throw error;
-    }
-
-    logDevPreviewFallback("users.getUserProfile", error);
-    return getDevProfile(userId);
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("id", userId)
+    .single();
+  if (error) {
+    if (error.code === "PGRST116") return null;
+    throw error;
   }
-}
-
-export function listenToUserProfile(
-  userId: string,
-  callback: (profile: UserProfile | null) => void,
-  onError?: (message: string) => void
-): () => void {
-  const ref = doc(db, "users", userId);
-
-  const unsubscribe = onSnapshot(
-    ref,
-    (snapshot) => {
-      if (!snapshot.exists()) {
-        callback(null);
-        return;
-      }
-
-      callback(mapUserProfile(snapshot.id, snapshot.data() as UserProfileDoc));
-    },
-    (error) => {
-      if (!DEV_PREVIEW_MODE || !isFirebasePermissionError(error)) {
-        onError?.(errorMessage(error, "Unable to listen for user profile."));
-        return;
-      }
-
-      logDevPreviewFallback("users.listenToUserProfile", error);
-      callback(getDevProfile(userId));
-      unsubscribe();
-    }
-  );
-
-  return unsubscribe;
+  return mapRow(data as Record<string, unknown>);
 }
 
 export async function updateUserProfile(
   userId: string,
-  patch: Partial<UpsertUserProfileInput> & { avatarUrl?: string }
+  patch: Partial<UpsertUserProfileInput> & { avatarUrl?: string; stripeAccountId?: string }
 ): Promise<void> {
-  const ref = doc(db, "users", userId);
+  const update: Record<string, unknown> = {};
+  if (patch.displayName !== undefined) update.display_name = patch.displayName;
+  if (patch.email !== undefined) update.email = patch.email;
+  if (patch.role !== undefined) update.role = patch.role;
+  if (patch.phone !== undefined) update.phone = patch.phone;
+  if (patch.preferredReservePercent !== undefined)
+    update.preferred_reserve_percent = patch.preferredReservePercent;
+  if (patch.avatarUrl !== undefined) update.avatar_url = patch.avatarUrl;
+  if (patch.stripeAccountId !== undefined) update.stripe_account_id = patch.stripeAccountId;
 
-  try {
-    await updateDoc(ref, {
-      ...patch,
-      updatedAt: serverTimestamp(),
-    });
-  } catch (error) {
-    if (!DEV_PREVIEW_MODE || !isFirebasePermissionError(error)) {
-      throw error;
-    }
+  if (Object.keys(update).length === 0) return;
 
-    logDevPreviewFallback("users.updateUserProfile", error);
-    const current = getDevProfile(userId);
-    DEV_PREVIEW_STATE.profiles[userId] = {
-      ...current,
-      ...patch,
-      id: userId,
-      updatedAtIso: new Date().toISOString(),
-    };
-  }
+  const { error } = await supabase.from("profiles").update(update).eq("id", userId);
+  if (error) throw error;
+}
+
+export async function listAllProfiles(): Promise<UserProfile[]> {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(300);
+  if (error) throw error;
+  return (data as Record<string, unknown>[]).map(mapRow);
+}
+
+export async function deleteProfile(userId: string): Promise<void> {
+  const { error } = await supabase.from("profiles").delete().eq("id", userId);
+  if (error) throw error;
 }

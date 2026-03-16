@@ -1,16 +1,15 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { FlatList, RefreshControl, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Animated from "react-native-reanimated";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AnimatedListItem,
   ChargerStatusBadge,
   EmptyStateCard,
-  InfoPill,
   PressableScale,
   ScreenContainer,
   SearchBar,
-  SecondaryButton,
   SegmentedControl,
   Typography,
   Colors,
@@ -18,35 +17,26 @@ import {
   Shadows,
   Spacing,
 } from "@/src/components";
-import { listenToChargers, updateChargerStatus, type Charger } from "@/src/features/chargers";
+import { listChargers, updateChargerStatus, type Charger } from "@/src/features/chargers";
 import { useEntranceAnimation, useRefresh } from "@/src/hooks";
 
 export default function AdminTrustTabScreen() {
   const entranceStyle = useEntranceAnimation();
-  const [chargers, setChargers] = useState<Charger[]>([]);
-  const [filter, setFilter] = useState<"all" | "suspended" | "rejected" | "flagged">("all");
+  const queryClient = useQueryClient();
+  const [filter, setFilter] = useState<"all" | "pending" | "rejected" | "flagged">("all");
   const [searchText, setSearchText] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const unsubscribe = listenToChargers(
-      (items) => {
-        setChargers(items);
-        setIsLoading(false);
-      },
-      undefined,
-      (message) => {
-        setError(message);
-        setIsLoading(false);
-      }
-    );
+  const chargersQuery = useQuery({
+    queryKey: ["chargers", "all"],
+    queryFn: () => listChargers(),
+  });
 
-    return unsubscribe;
-  }, []);
+  const chargers = useMemo(() => chargersQuery.data ?? [], [chargersQuery.data]);
+  const isLoading = chargersQuery.isLoading;
 
   const refresh = async () => {
-    return;
+    await chargersQuery.refetch();
   };
   const { refreshing, onRefresh } = useRefresh(refresh);
 
@@ -55,7 +45,7 @@ export default function AdminTrustTabScreen() {
   const watchlist = useMemo(() => {
     const flagged = chargers.filter(
       (item) =>
-        item.status === "suspended" || item.status === "rejected" || item.verificationScore < 45
+        item.status === "pending" || item.status === "rejected" || item.verificationScore < 45
     );
 
     let filtered = flagged;
@@ -77,19 +67,21 @@ export default function AdminTrustTabScreen() {
 
   const reinstate = async (charger: Charger) => {
     try {
-      await updateChargerStatus(charger.id, "verified", 86);
+      await updateChargerStatus(charger.id, "approved", 86);
+      queryClient.invalidateQueries({ queryKey: ["chargers"] });
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to reinstate charger.");
     }
   };
 
-  const suspend = async (charger: Charger) => {
+  const reject = async (charger: Charger) => {
     try {
-      await updateChargerStatus(charger.id, "suspended", 10);
+      await updateChargerStatus(charger.id, "rejected", 10);
+      queryClient.invalidateQueries({ queryKey: ["chargers"] });
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to suspend charger.");
+      setError(err instanceof Error ? err.message : "Unable to reject charger.");
     }
   };
 
@@ -98,7 +90,7 @@ export default function AdminTrustTabScreen() {
       <Animated.View style={[{ flex: 1 }, entranceStyle]}>
         <ScreenContainer scrollable={false}>
           <Text style={Typography.pageTitle}>Trust Watchlist</Text>
-          <Text style={Typography.body}>Monitor flagged and suspended chargers.</Text>
+          <Text style={Typography.body}>Monitor flagged and rejected chargers.</Text>
 
           <SearchBar
             value={searchText}
@@ -109,7 +101,7 @@ export default function AdminTrustTabScreen() {
           <SegmentedControl
             segments={[
               { id: "all", label: "All" },
-              { id: "suspended", label: "Suspended" },
+              { id: "pending", label: "Pending" },
               { id: "rejected", label: "Rejected" },
               { id: "flagged", label: "Flagged" },
             ]}
@@ -129,10 +121,10 @@ export default function AdminTrustTabScreen() {
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.listContent}
             renderItem={({ item, index }) => {
-              const isSuspended = item.status === "suspended";
+              const isRejected = item.status === "rejected";
               return (
                 <AnimatedListItem index={index}>
-                  <View style={[styles.card, isSuspended && styles.cardFlagged]}>
+                  <View style={[styles.card, isRejected && styles.cardFlagged]}>
                     <View style={styles.cardHead}>
                       <Text style={styles.cardTitle}>{item.name}</Text>
                       <ChargerStatusBadge status={item.status} />
@@ -164,9 +156,9 @@ export default function AdminTrustTabScreen() {
                     </View>
 
                     <View style={styles.trustActions}>
-                      {item.status !== "suspended" ? (
-                        <PressableScale onPress={() => suspend(item)} style={styles.suspendBtn}>
-                          <Text style={styles.suspendBtnText}>Suspend</Text>
+                      {item.status !== "rejected" ? (
+                        <PressableScale onPress={() => reject(item)} style={styles.suspendBtn}>
+                          <Text style={styles.suspendBtnText}>Reject</Text>
                         </PressableScale>
                       ) : null}
                       <PressableScale onPress={() => reinstate(item)} style={styles.reinstateBtn}>

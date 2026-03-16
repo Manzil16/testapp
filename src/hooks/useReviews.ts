@@ -1,88 +1,43 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  createReview,
   listReviewsByCharger,
-  listenToReviewsByCharger,
-  type CreateReviewInput,
-  type Review,
-} from "@/src/features/reviews";
+  createReview,
+} from "../features/reviews/review.repository";
+import type { CreateReviewInput } from "../features/reviews/review.types";
 
 export function useReviews(chargerId?: string) {
-  const [reviews, setReviews] = useState<Review[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
-  useEffect(() => {
-    if (!chargerId) {
-      setReviews([]);
-      setError(null);
-      setIsLoading(false);
-      return;
-    }
+  const reviewsQuery = useQuery({
+    queryKey: ["reviews", chargerId],
+    queryFn: () => listReviewsByCharger(chargerId!),
+    enabled: Boolean(chargerId),
+  });
 
-    setIsLoading(true);
-    setError(null);
-    const unsubscribe = listenToReviewsByCharger(
-      chargerId,
-      (items) => {
-        setReviews(items);
-        setIsLoading(false);
-      },
-      (message) => {
-        setError(message);
-        setIsLoading(false);
-      }
-    );
+  const reviews = useMemo(() => reviewsQuery.data ?? [], [reviewsQuery.data]);
 
-    return unsubscribe;
-  }, [chargerId]);
-
-  const refresh = useCallback(async () => {
-    if (!chargerId) {
-      return;
-    }
-
-    try {
-      setError(null);
-      const result = await listReviewsByCharger(chargerId);
-      setReviews(result);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to refresh reviews.");
-    }
-  }, [chargerId]);
-
-  const submitReview = useCallback(
-    async (input: CreateReviewInput) => {
-      try {
-        setError(null);
-        await createReview(input);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Unable to submit review.";
-        setError(message);
-        throw err;
-      }
-    },
-    []
-  );
-
-  const averageRating = useMemo(() => {
-    if (!reviews.length) {
-      return null;
-    }
-
-    const total = reviews.reduce((sum, item) => sum + item.rating, 0);
-    return total / reviews.length;
+  const { averageRating, totalReviews } = useMemo(() => {
+    const total = reviews.length;
+    if (total === 0) return { averageRating: null, totalReviews: 0 };
+    const avg = reviews.reduce((sum, r) => sum + r.rating, 0) / total;
+    return { averageRating: Math.round(avg * 10) / 10, totalReviews: total };
   }, [reviews]);
 
-  return {
-    data: {
-      reviews,
-      averageRating,
-      totalReviews: reviews.length,
+  const submitMutation = useMutation({
+    mutationFn: (input: CreateReviewInput) => createReview(input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["reviews", chargerId] });
     },
-    isLoading,
-    error,
-    refresh,
-    submitReview,
+  });
+
+  return {
+    data: { reviews, averageRating, totalReviews },
+    isLoading: reviewsQuery.isLoading,
+    error: reviewsQuery.error?.message || null,
+    refresh: async () => {
+      await reviewsQuery.refetch();
+    },
+    submitReview: (input: CreateReviewInput) => submitMutation.mutateAsync(input),
   };
 }

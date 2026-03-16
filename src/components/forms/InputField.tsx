@@ -14,6 +14,7 @@ interface InputFieldProps extends Omit<TextInputProps, "style"> {
   label: string;
   error?: string;
   hint?: string;
+  inputRef?: React.Ref<TextInput>;
   /** Icon rendered inside the input on the left */
   leftIcon?: React.ReactNode;
   /** Icon rendered inside the input on the right (e.g. eye toggle) */
@@ -30,6 +31,7 @@ export function InputField({
   label,
   error,
   hint,
+  inputRef,
   leftIcon,
   rightIcon,
   onRightIconPress,
@@ -64,6 +66,7 @@ export function InputField({
 
         <TextInput
           {...textInputProps}
+          ref={inputRef}
           style={[
             styles.input,
             leftIcon ? styles.inputWithLeft : undefined,
@@ -116,14 +119,14 @@ const styles = StyleSheet.create({
   inputRow: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: Colors.surface,
+    backgroundColor: Colors.surfaceAlt,
     borderWidth: 1.5,
     borderRadius: Radius.input,
     minHeight: 48,
     paddingHorizontal: Spacing.md,
   },
   inputFocused: {
-    backgroundColor: Colors.surface,
+    backgroundColor: Colors.surfaceElevated,
   },
   multiline: {
     alignItems: "flex-start",

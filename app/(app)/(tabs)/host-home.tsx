@@ -16,7 +16,6 @@ import {
   Avatar,
   ChargerStatusBadge,
   EmptyStateCard,
-  InfoPill,
   PressableScale,
   ScreenContainer,
   SectionTitle,
@@ -32,11 +31,11 @@ import { useHostDashboard, useEntranceAnimation, useRefresh } from "@/src/hooks"
 
 export default function HostHomeTabScreen() {
   const router = useRouter();
-  const { authUser, sessionUser, profile } = useAuth();
+  const { user, profile } = useAuth();
   const entranceStyle = useEntranceAnimation();
   const userId = useMemo(
-    () => authUser?.uid || sessionUser?.uid,
-    [authUser?.uid, sessionUser?.uid]
+    () => user?.id,
+    [user?.id]
   );
 
   const { data, isLoading, error, refresh } = useHostDashboard(userId);
@@ -59,7 +58,7 @@ export default function HostHomeTabScreen() {
                 {/* Hero Header */}
                 <Animated.View entering={FadeIn.duration(400)}>
                   <LinearGradient
-                    colors={["#1DB954", "#15803d"]}
+                    colors={Colors.gradientHero as any}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 1 }}
                     style={styles.heroGradient}
@@ -207,7 +206,7 @@ export default function HostHomeTabScreen() {
                       {item.suburb}, {item.state} · {item.maxPowerKw} kW
                     </Text>
                   </View>
-                  <ChargerStatusBadge status={item.status === "verified" ? "online" : item.status} />
+                  <ChargerStatusBadge status={item.status === "approved" ? "online" : item.status} />
                 </PressableScale>
               </AnimatedListItem>
             )}
@@ -260,6 +259,7 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "#FFFFFF",
     letterSpacing: -0.5,
+    fontFamily: "Syne_700Bold",
   },
   earningsRow: {
     flexDirection: "row",

@@ -1,289 +1,125 @@
-import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  onSnapshot,
-  orderBy,
-  query,
-  setDoc,
-  updateDoc,
-  where,
-  type Timestamp,
-} from "firebase/firestore";
-import { db } from "../../firebaseConfig";
-import { buildServerTimestampFields, timestampToIso } from "../shared/firestore-utils";
+import { supabase } from "../../lib/supabase";
+import type { Json } from "../../lib/database.types";
 import type {
   Charger,
+  ChargerConnector,
+  ChargerAvailabilityWindow,
   ChargerFilter,
   ChargerStatus,
   UpsertChargerInput,
 } from "./charger.types";
-import {
-  DEV_PREVIEW_MODE,
-  DEV_PREVIEW_STATE,
-  isFirebasePermissionError,
-  logDevPreviewFallback,
-} from "../shared/dev-preview";
 
-interface ChargerDoc {
-  hostUserId: string;
-  name: string;
-  address: string;
-  suburb: string;
-  state: string;
-  latitude: number;
-  longitude: number;
-  maxPowerKw: number;
-  pricingPerKwh: number;
-  connectors: Charger["connectors"];
-  amenities: string[];
-  availabilityNote: string;
-  availabilityWindow?: Charger["availabilityWindow"];
-  status: ChargerStatus;
-  verificationScore: number;
-  createdAt?: Timestamp;
-  updatedAt?: Timestamp;
-}
-
-function mapCharger(id: string, docData: ChargerDoc): Charger {
+function mapRow(row: Record<string, unknown>): Charger {
   return {
-    id,
-    hostUserId: docData.hostUserId,
-    name: docData.name,
-    address: docData.address,
-    suburb: docData.suburb,
-    state: docData.state,
-    latitude: docData.latitude,
-    longitude: docData.longitude,
-    maxPowerKw: docData.maxPowerKw,
-    pricingPerKwh: docData.pricingPerKwh,
-    connectors: docData.connectors,
-    amenities: docData.amenities,
-    availabilityNote: docData.availabilityNote,
-    availabilityWindow: docData.availabilityWindow,
-    status: docData.status,
-    verificationScore: docData.verificationScore,
-    createdAtIso: timestampToIso(docData.createdAt),
-    updatedAtIso: timestampToIso(docData.updatedAt),
+    id: row.id as string,
+    hostUserId: row.host_id as string,
+    name: row.name as string,
+    address: row.address as string,
+    suburb: row.suburb as string,
+    state: row.state as string,
+    latitude: row.latitude as number,
+    longitude: row.longitude as number,
+    maxPowerKw: row.max_power_kw as number,
+    pricingPerKwh: Number(row.price_per_kwh),
+    connectors: (row.connectors as ChargerConnector[]) || [],
+    amenities: (row.amenities as string[]) || [],
+    availabilityNote: (row.availability_note as string) || "",
+    availabilityWindow: row.availability_window as ChargerAvailabilityWindow | undefined,
+    images: (row.images as string[]) || [],
+    status: row.status as ChargerStatus,
+    verificationScore: row.verification_score as number,
+    createdAtIso: row.created_at as string,
+    updatedAtIso: row.updated_at as string,
   };
 }
 
-function errorMessage(error: unknown, fallback: string): string {
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
-  return fallback;
-}
-
-function filterChargers(chargers: Charger[], filter?: ChargerFilter): Charger[] {
-  if (!filter) {
-    return chargers;
-  }
-
-  return chargers.filter((charger) => {
-    if (filter.status && charger.status !== filter.status) {
+function applyClientFilter(chargers: Charger[], filter?: ChargerFilter): Charger[] {
+  if (!filter) return chargers;
+  return chargers.filter((c) => {
+    if (filter.status && c.status !== filter.status) return false;
+    if (filter.state && c.state.toLowerCase() !== filter.state.toLowerCase()) return false;
+    if (typeof filter.minPowerKw === "number" && c.maxPowerKw < filter.minPowerKw) return false;
+    if (filter.connectorType && !c.connectors.some((cn) => cn.type === filter.connectorType))
       return false;
-    }
-
-    if (filter.state && charger.state.toLowerCase() !== filter.state.toLowerCase()) {
-      return false;
-    }
-
-    if (typeof filter.minPowerKw === "number" && charger.maxPowerKw < filter.minPowerKw) {
-      return false;
-    }
-
-    if (
-      filter.connectorType &&
-      !charger.connectors.some((connector) => connector.type === filter.connectorType)
-    ) {
-      return false;
-    }
-
     if (filter.searchText) {
-      const haystack = `${charger.name} ${charger.address} ${charger.suburb}`.toLowerCase();
-      if (!haystack.includes(filter.searchText.trim().toLowerCase())) {
-        return false;
-      }
+      const hay = `${c.name} ${c.address} ${c.suburb}`.toLowerCase();
+      if (!hay.includes(filter.searchText.trim().toLowerCase())) return false;
     }
-
     return true;
   });
 }
 
-function getDevChargers(filter?: ChargerFilter): Charger[] {
-  return filterChargers(DEV_PREVIEW_STATE.chargers, filter);
-}
-
 export async function upsertCharger(
-  chargerId: string,
+  chargerId: string | null,
   hostUserId: string,
   payload: UpsertChargerInput,
-  status: ChargerStatus = "pending_verification"
-): Promise<void> {
-  const ref = doc(db, "chargers", chargerId);
+  status: ChargerStatus = "pending"
+): Promise<string> {
+  const row = {
+    ...(chargerId ? { id: chargerId } : {}),
+    host_id: hostUserId,
+    name: payload.name,
+    address: payload.address,
+    suburb: payload.suburb,
+    state: payload.state,
+    latitude: payload.latitude,
+    longitude: payload.longitude,
+    max_power_kw: payload.maxPowerKw,
+    price_per_kwh: payload.pricingPerKwh,
+    connectors: payload.connectors as unknown as Json,
+    amenities: payload.amenities,
+    availability_note: payload.availabilityNote,
+    availability_window: (payload.availabilityWindow as unknown as Json) ?? null,
+    images: payload.images || [],
+    status,
+    verification_score: status === "approved" ? 90 : 50,
+  };
 
-  try {
-    await setDoc(
-      ref,
-      {
-        hostUserId,
-        ...payload,
-        status,
-        verificationScore: status === "verified" ? 90 : 50,
-        ...buildServerTimestampFields(true),
-      },
-      { merge: true }
-    );
-  } catch (error) {
-    if (!DEV_PREVIEW_MODE || !isFirebasePermissionError(error)) {
-      throw error;
-    }
-
-    logDevPreviewFallback("chargers.upsertCharger", error);
-    const existingIndex = DEV_PREVIEW_STATE.chargers.findIndex((charger) => charger.id === chargerId);
-    const next: Charger = {
-      id: chargerId,
-      hostUserId,
-      ...payload,
-      status,
-      verificationScore: status === "verified" ? 90 : 50,
-      createdAtIso: DEV_PREVIEW_STATE.chargers[existingIndex]?.createdAtIso || new Date().toISOString(),
-      updatedAtIso: new Date().toISOString(),
-    };
-
-    if (existingIndex >= 0) {
-      DEV_PREVIEW_STATE.chargers[existingIndex] = next;
-    } else {
-      DEV_PREVIEW_STATE.chargers.push(next);
-    }
-  }
+  const { data, error } = await supabase
+    .from("chargers")
+    .upsert(row)
+    .select("id")
+    .single();
+  if (error) throw error;
+  return (data as { id: string }).id;
 }
 
 export async function getChargerById(chargerId: string): Promise<Charger | null> {
-  try {
-    const snapshot = await getDoc(doc(db, "chargers", chargerId));
-
-    if (!snapshot.exists()) {
-      return null;
-    }
-
-    return mapCharger(snapshot.id, snapshot.data() as ChargerDoc);
-  } catch (error) {
-    if (!DEV_PREVIEW_MODE || !isFirebasePermissionError(error)) {
-      throw error;
-    }
-
-    logDevPreviewFallback("chargers.getChargerById", error);
-    return DEV_PREVIEW_STATE.chargers.find((charger) => charger.id === chargerId) || null;
+  const { data, error } = await supabase
+    .from("chargers")
+    .select("*")
+    .eq("id", chargerId)
+    .single();
+  if (error) {
+    if (error.code === "PGRST116") return null;
+    throw error;
   }
+  return mapRow(data as Record<string, unknown>);
 }
 
 export async function listChargers(filter?: ChargerFilter): Promise<Charger[]> {
-  const q = query(collection(db, "chargers"), orderBy("updatedAt", "desc"));
+  let q = supabase.from("chargers").select("*").order("updated_at", { ascending: false });
 
-  try {
-    const snapshot = await getDocs(q);
-
-    return filterChargers(
-      snapshot.docs.map((charger) => mapCharger(charger.id, charger.data() as ChargerDoc)),
-      filter
-    );
-  } catch (error) {
-    if (!DEV_PREVIEW_MODE || !isFirebasePermissionError(error)) {
-      throw error;
-    }
-
-    logDevPreviewFallback("chargers.listChargers", error);
-    return getDevChargers(filter);
+  if (filter?.status) {
+    q = q.eq("status", filter.status);
   }
+
+  const { data, error } = await q;
+  if (error) throw error;
+  return applyClientFilter(
+    (data as Record<string, unknown>[]).map(mapRow),
+    filter
+  );
 }
 
 export async function listChargersByHost(hostUserId: string): Promise<Charger[]> {
-  const q = query(
-    collection(db, "chargers"),
-    where("hostUserId", "==", hostUserId),
-    orderBy("updatedAt", "desc")
-  );
-
-  try {
-    const snapshot = await getDocs(q);
-
-    return snapshot.docs.map((charger) => mapCharger(charger.id, charger.data() as ChargerDoc));
-  } catch (error) {
-    if (!DEV_PREVIEW_MODE || !isFirebasePermissionError(error)) {
-      throw error;
-    }
-
-    logDevPreviewFallback("chargers.listChargersByHost", error);
-    return DEV_PREVIEW_STATE.chargers.filter((charger) => charger.hostUserId === hostUserId);
-  }
-}
-
-export function listenToChargers(
-  callback: (chargers: Charger[]) => void,
-  filter?: ChargerFilter,
-  onError?: (message: string) => void
-): () => void {
-  const q = query(collection(db, "chargers"), orderBy("updatedAt", "desc"));
-
-  const unsubscribe = onSnapshot(
-    q,
-    (snapshot) => {
-      callback(
-        filterChargers(
-          snapshot.docs.map((charger) => mapCharger(charger.id, charger.data() as ChargerDoc)),
-          filter
-        )
-      );
-    },
-    (error) => {
-      if (!DEV_PREVIEW_MODE || !isFirebasePermissionError(error)) {
-        onError?.(errorMessage(error, "Unable to listen for chargers."));
-        return;
-      }
-
-      logDevPreviewFallback("chargers.listenToChargers", error);
-      callback(getDevChargers(filter));
-      unsubscribe();
-    }
-  );
-
-  return unsubscribe;
-}
-
-export function listenToHostChargers(
-  hostUserId: string,
-  callback: (chargers: Charger[]) => void,
-  onError?: (message: string) => void
-): () => void {
-  const q = query(
-    collection(db, "chargers"),
-    where("hostUserId", "==", hostUserId),
-    orderBy("updatedAt", "desc")
-  );
-
-  const unsubscribe = onSnapshot(
-    q,
-    (snapshot) => {
-      callback(
-        snapshot.docs.map((charger) => mapCharger(charger.id, charger.data() as ChargerDoc))
-      );
-    },
-    (error) => {
-      if (!DEV_PREVIEW_MODE || !isFirebasePermissionError(error)) {
-        onError?.(errorMessage(error, "Unable to listen for host chargers."));
-        return;
-      }
-
-      logDevPreviewFallback("chargers.listenToHostChargers", error);
-      callback(DEV_PREVIEW_STATE.chargers.filter((charger) => charger.hostUserId === hostUserId));
-      unsubscribe();
-    }
-  );
-
-  return unsubscribe;
+  const { data, error } = await supabase
+    .from("chargers")
+    .select("*")
+    .eq("host_id", hostUserId)
+    .order("updated_at", { ascending: false });
+  if (error) throw error;
+  return (data as Record<string, unknown>[]).map(mapRow);
 }
 
 export async function updateChargerStatus(
@@ -291,22 +127,14 @@ export async function updateChargerStatus(
   status: ChargerStatus,
   verificationScore: number
 ): Promise<void> {
-  try {
-    await updateDoc(doc(db, "chargers", chargerId), {
-      status,
-      verificationScore,
-      ...buildServerTimestampFields(false),
-    });
-  } catch (error) {
-    if (!DEV_PREVIEW_MODE || !isFirebasePermissionError(error)) {
-      throw error;
-    }
+  const { error } = await supabase
+    .from("chargers")
+    .update({ status, verification_score: verificationScore })
+    .eq("id", chargerId);
+  if (error) throw error;
+}
 
-    logDevPreviewFallback("chargers.updateChargerStatus", error);
-    DEV_PREVIEW_STATE.chargers = DEV_PREVIEW_STATE.chargers.map((charger) =>
-      charger.id === chargerId
-        ? { ...charger, status, verificationScore, updatedAtIso: new Date().toISOString() }
-        : charger
-    );
-  }
+export async function deleteCharger(chargerId: string): Promise<void> {
+  const { error } = await supabase.from("chargers").delete().eq("id", chargerId);
+  if (error) throw error;
 }

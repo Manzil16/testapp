@@ -1,7 +1,8 @@
+import Constants from "expo-constants";
 import * as Google from "expo-auth-session/providers/google";
-import { Link, useRouter } from "expo-router";
+import { Link } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Alert,
   KeyboardAvoidingView,
@@ -13,8 +14,8 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { InputField } from "@/src/components/forms/InputField";
-import { PrimaryCTA } from "@/src/components/ui/PrimaryCTA";
+import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
+import { InputField, GradientButton } from "@/src/components";
 import { Colors, Radius, Shadows, Spacing, Typography } from "@/src/features/shared/theme";
 import { useAuth } from "@/src/features/auth/auth-context";
 import {
@@ -23,7 +24,6 @@ import {
   GOOGLE_WEB_CLIENT_ID,
 } from "@/src/features/auth/google-auth.config";
 
-// Required for expo-auth-session to close the auth browser automatically
 WebBrowser.maybeCompleteAuthSession();
 
 const ROLE_INFO = [
@@ -33,7 +33,6 @@ const ROLE_INFO = [
 ] as const;
 
 export default function SignInScreen() {
-  const router = useRouter();
   const { login, loginWithGoogle } = useAuth();
 
   const [email, setEmail] = useState("");
@@ -44,12 +43,25 @@ export default function SignInScreen() {
   const [emailError, setEmailError] = useState("");
   const [passwordError, setPasswordError] = useState("");
 
-  // ─── Google Auth ─────────────────────────────────────────────────────────
+  const isExpoGo = Constants.appOwnership === "expo";
+
   const [googleRequest, googleResponse, googlePromptAsync] = Google.useAuthRequest({
     webClientId: GOOGLE_WEB_CLIENT_ID,
     iosClientId: GOOGLE_IOS_CLIENT_ID,
     androidClientId: GOOGLE_ANDROID_CLIENT_ID,
   });
+
+  const handleGoogleCredential = useCallback(async (idToken: string) => {
+    try {
+      setGoogleLoading(true);
+      await loginWithGoogle(idToken);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Google sign-in failed.";
+      Alert.alert("Google Sign-In Failed", msg);
+    } finally {
+      setGoogleLoading(false);
+    }
+  }, [loginWithGoogle]);
 
   useEffect(() => {
     if (googleResponse?.type === "success") {
@@ -58,22 +70,8 @@ export default function SignInScreen() {
         handleGoogleCredential(idToken);
       }
     }
-  }, [googleResponse]);
+  }, [googleResponse, handleGoogleCredential]);
 
-  async function handleGoogleCredential(idToken: string) {
-    try {
-      setGoogleLoading(true);
-      await loginWithGoogle(idToken);
-      router.replace("/(app)/(tabs)/dashboard" as any);
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : "Google sign-in failed.";
-      Alert.alert("Google Sign-In Failed", msg);
-    } finally {
-      setGoogleLoading(false);
-    }
-  }
-
-  // ─── Email/Password Login ─────────────────────────────────────────────────
   function validate() {
     let valid = true;
     setEmailError("");
@@ -101,7 +99,6 @@ export default function SignInScreen() {
     try {
       setSubmitting(true);
       await login(email.trim(), password);
-      router.replace("/(app)/(tabs)/dashboard" as any);
     } catch (error) {
       const msg = error instanceof Error ? error.message : "Unable to sign in.";
       Alert.alert("Sign In Failed", msg);
@@ -121,17 +118,15 @@ export default function SignInScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {/* ── Brand ─────────────────────────────────────────────────── */}
-          <View style={styles.brandBlock}>
+          <Animated.View entering={FadeIn.duration(400)} style={styles.brandBlock}>
             <View style={styles.logoCircle}>
               <Text style={styles.logoEmoji}>⚡</Text>
             </View>
             <Text style={styles.brandName}>VehicleGrid</Text>
             <Text style={styles.brandTagline}>The EV charging marketplace</Text>
-          </View>
+          </Animated.View>
 
-          {/* ── Role Info Tiles (informational — role is set on sign-up) ── */}
-          <View style={styles.roleTileRow}>
+          <Animated.View entering={FadeInDown.delay(100).duration(350)} style={styles.roleTileRow}>
             {ROLE_INFO.map((role) => (
               <View key={role.label} style={styles.roleTile}>
                 <Text style={styles.roleTileIcon}>{role.icon}</Text>
@@ -139,41 +134,41 @@ export default function SignInScreen() {
                 <Text style={styles.roleTileDesc}>{role.desc}</Text>
               </View>
             ))}
-          </View>
+          </Animated.View>
 
-          {/* ── Auth Card ─────────────────────────────────────────────── */}
-          <View style={styles.card}>
+          <Animated.View entering={FadeInDown.delay(200).duration(350)} style={styles.card}>
             <Text style={styles.cardTitle}>Sign In</Text>
             <Text style={styles.cardSubtitle}>
               Access your Driver, Host, or Admin account
             </Text>
 
-            {/* Google Button */}
             <TouchableOpacity
               style={[
                 styles.googleBtn,
-                (googleLoading || !googleRequest) && styles.disabledBtn,
+                (googleLoading || !googleRequest || isExpoGo) && styles.disabledBtn,
               ]}
               onPress={() => googlePromptAsync()}
-              disabled={googleLoading || !googleRequest}
+              disabled={googleLoading || !googleRequest || isExpoGo}
               activeOpacity={0.8}
             >
               <View style={styles.googleG}>
                 <Text style={styles.googleGText}>G</Text>
               </View>
               <Text style={styles.googleBtnText}>
-                {googleLoading ? "Signing in…" : "Continue with Google"}
+                {isExpoGo
+                  ? "Google sign-in unavailable in Expo Go"
+                  : googleLoading
+                  ? "Signing in…"
+                  : "Continue with Google"}
               </Text>
             </TouchableOpacity>
 
-            {/* OR Divider */}
             <View style={styles.divider}>
               <View style={styles.dividerLine} />
               <Text style={styles.dividerLabel}>or continue with email</Text>
               <View style={styles.dividerLine} />
             </View>
 
-            {/* Email */}
             <InputField
               label="Email address"
               value={email}
@@ -189,7 +184,6 @@ export default function SignInScreen() {
               leftIcon={<Text style={styles.inputIcon}>✉</Text>}
             />
 
-            {/* Password */}
             <InputField
               label="Password"
               value={password}
@@ -208,7 +202,7 @@ export default function SignInScreen() {
               onRightIconPress={() => setShowPassword((v) => !v)}
             />
 
-            <PrimaryCTA
+            <GradientButton
               label="Sign In"
               onPress={handleLogin}
               loading={submitting}
@@ -221,7 +215,7 @@ export default function SignInScreen() {
                 Create account
               </Link>
             </Text>
-          </View>
+          </Animated.View>
 
           <Text style={styles.roleHint}>
             Your role (Driver / Host / Admin) is selected when you create your account
@@ -243,8 +237,6 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.xxl,
     paddingBottom: 48,
   },
-
-  // Brand block
   brandBlock: {
     alignItems: "center",
     marginBottom: Spacing.xxl,
@@ -253,11 +245,11 @@ const styles = StyleSheet.create({
     width: 68,
     height: 68,
     borderRadius: Radius.xl,
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.accentLight,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: Spacing.md,
-    ...Shadows.button,
+    ...Shadows.glow,
   },
   logoEmoji: {
     fontSize: 34,
@@ -267,13 +259,12 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: Colors.textPrimary,
     letterSpacing: -0.5,
+    fontFamily: "Syne_800ExtraBold",
   },
   brandTagline: {
     ...Typography.body,
     marginTop: 3,
   },
-
-  // Role info tiles
   roleTileRow: {
     flexDirection: "row",
     gap: Spacing.sm,
@@ -287,7 +278,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderWidth: 1,
     borderColor: Colors.border,
-    ...Shadows.card,
   },
   roleTileIcon: {
     fontSize: 22,
@@ -298,20 +288,21 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: Colors.textPrimary,
     marginBottom: 2,
+    fontFamily: "DMSans_700Bold",
   },
   roleTileDesc: {
     fontSize: 10,
     color: Colors.textMuted,
     textAlign: "center",
     lineHeight: 13,
+    fontFamily: "DMSans_400Regular",
   },
-
-  // Auth card
   card: {
     backgroundColor: Colors.surface,
     borderRadius: Radius.card,
     padding: Spacing.xl,
-    ...Shadows.card,
+    borderWidth: 1,
+    borderColor: Colors.glassBorder,
   },
   cardTitle: {
     ...Typography.sectionTitle,
@@ -321,8 +312,6 @@ const styles = StyleSheet.create({
     ...Typography.body,
     marginBottom: Spacing.xl,
   },
-
-  // Google
   googleBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -331,9 +320,8 @@ const styles = StyleSheet.create({
     borderRadius: Radius.lg,
     borderWidth: 1.5,
     borderColor: Colors.border,
-    backgroundColor: Colors.surface,
+    backgroundColor: Colors.surfaceAlt,
     gap: Spacing.md,
-    ...Shadows.card,
   },
   disabledBtn: {
     opacity: 0.45,
@@ -347,7 +335,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   googleGText: {
-    color: Colors.textInverse,
+    color: "#FFFFFF",
     fontSize: 14,
     fontWeight: "800",
   },
@@ -355,9 +343,8 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "600",
     color: Colors.textPrimary,
+    fontFamily: "DMSans_600SemiBold",
   },
-
-  // OR divider
   divider: {
     flexDirection: "row",
     alignItems: "center",
@@ -373,28 +360,26 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.textMuted,
     fontWeight: "500",
+    fontFamily: "DMSans_500Medium",
   },
-
   inputIcon: {
     fontSize: 14,
     color: Colors.textMuted,
   },
-
   ctaBtn: {
     marginTop: Spacing.sm,
   },
-
   footerText: {
     textAlign: "center",
     fontSize: 13,
     color: Colors.textSecondary,
     marginTop: Spacing.xl,
+    fontFamily: "DMSans_400Regular",
   },
   footerLink: {
-    color: Colors.primary,
+    color: Colors.accent,
     fontWeight: "700",
   },
-
   roleHint: {
     textAlign: "center",
     fontSize: 11,
@@ -402,5 +387,6 @@ const styles = StyleSheet.create({
     marginTop: Spacing.xl,
     lineHeight: 16,
     paddingHorizontal: Spacing.sm,
+    fontFamily: "DMSans_400Regular",
   },
 });

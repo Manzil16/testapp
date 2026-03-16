@@ -1,161 +1,121 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   listBookingsByDriver,
-  listenToBookingsByDriver,
-  updateArrivalSignal,
   updateBookingStatus,
-  type Booking,
-} from "@/src/features/bookings";
-import { listenToChargers, type Charger } from "@/src/features/chargers";
-import { createReview } from "@/src/features/reviews";
-
-export type DriverBookingSegment = "upcoming" | "active" | "past";
+  updateArrivalSignal,
+} from "../features/bookings/booking.repository";
+import { listChargers } from "../features/chargers/charger.repository";
+import { createReview, listReviewsByDriver } from "../features/reviews/review.repository";
+import type { Booking } from "../features/bookings/booking.types";
+import type { Charger } from "../features/chargers/charger.types";
 
 export function useDriverBookings(userId?: string) {
-  const [bookings, setBookings] = useState<Booking[]>([]);
-  const [chargersById, setChargersById] = useState<Record<string, Charger>>({});
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
-  useEffect(() => {
-    if (!userId) {
-      setBookings([]);
-      setError(null);
-      setIsLoading(false);
-      return;
-    }
+  const bookingsQuery = useQuery({
+    queryKey: ["bookings", "driver", userId],
+    queryFn: () => listBookingsByDriver(userId!),
+    enabled: Boolean(userId),
+  });
 
-    setIsLoading(true);
-    setError(null);
-    let bookingsReady = false;
-    let chargersReady = false;
+  const chargersQuery = useQuery({
+    queryKey: ["chargers", "approved"],
+    queryFn: () => listChargers({ status: "approved" }),
+    enabled: Boolean(userId),
+  });
 
-    const markReady = () => {
-      if (bookingsReady && chargersReady) {
-        setIsLoading(false);
-      }
-    };
+  const reviewsQuery = useQuery({
+    queryKey: ["reviews", "driver", userId],
+    queryFn: () => listReviewsByDriver(userId!),
+    enabled: Boolean(userId),
+  });
 
-    const unsubBookings = listenToBookingsByDriver(
-      userId,
-      (items) => {
-        setBookings(items);
-        bookingsReady = true;
-        markReady();
-      },
-      (message) => {
-        setError(message);
-        bookingsReady = true;
-        markReady();
-      }
-    );
+  const bookings = useMemo(() => bookingsQuery.data ?? [], [bookingsQuery.data]);
+  const chargers = useMemo(() => chargersQuery.data ?? [], [chargersQuery.data]);
+  const reviews = useMemo(() => reviewsQuery.data ?? [], [reviewsQuery.data]);
 
-    const unsubChargers = listenToChargers(
-      (items) => {
-        setChargersById(
-          Object.fromEntries(items.map((item) => [item.id, item]))
-        );
-        chargersReady = true;
-        markReady();
-      },
-      undefined,
-      (message) => {
-        setError(message);
-        chargersReady = true;
-        markReady();
-      }
-    );
-
-    return () => {
-      unsubBookings();
-      unsubChargers();
-    };
-  }, [userId]);
-
-  const refresh = useCallback(async () => {
-    if (!userId) {
-      return;
-    }
-
-    try {
-      setError(null);
-      const result = await listBookingsByDriver(userId);
-      setBookings(result);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to refresh bookings.");
-    }
-  }, [userId]);
+  const chargersById = useMemo(() => {
+    const map: Record<string, Charger> = {};
+    for (const c of chargers) map[c.id] = c;
+    return map;
+  }, [chargers]);
 
   const bySegment = useMemo(() => {
-    const now = Date.now();
-
-    const upcoming = bookings.filter((booking) => {
-      const startTs = new Date(booking.startTimeIso).getTime();
-      return (
-        (booking.status === "requested" || booking.status === "approved") &&
-        startTs > now
-      );
-    });
-
-    const active = bookings.filter(
-      (booking) =>
-        booking.status === "in_progress" ||
-        booking.arrivalSignal === "arrived" ||
-        booking.arrivalSignal === "charging"
-    );
-
-    const past = bookings.filter((booking) =>
-      ["completed", "declined", "cancelled"].includes(booking.status)
-    );
-
-    return {
-      upcoming,
-      active,
-      past,
-    };
+    const upcoming: Booking[] = [];
+    const active: Booking[] = [];
+    const past: Booking[] = [];
+    for (const b of bookings) {
+      if (b.status === "in_progress" || b.status === "approved") active.push(b);
+      else if (b.status === "requested") upcoming.push(b);
+      else past.push(b);
+    }
+    return { upcoming, active, past };
   }, [bookings]);
 
-  const cancelBooking = useCallback(async (bookingId: string) => {
-    await updateBookingStatus(bookingId, "cancelled", "Cancelled by driver");
-  }, []);
+  const reviewedBookingIds = useMemo(() => {
+    const set = new Set<string>();
+    for (const review of reviews) {
+      set.add(review.bookingId);
+    }
+    return set;
+  }, [reviews]);
 
-  const markArrived = useCallback(async (bookingId: string) => {
-    await updateArrivalSignal(bookingId, "arrived");
-  }, []);
+  const reviewRatingsByBookingId = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const review of reviews) {
+      if (!(review.bookingId in map)) {
+        map[review.bookingId] = review.rating;
+      }
+    }
+    return map;
+  }, [reviews]);
 
-  const startCharging = useCallback(async (bookingId: string) => {
-    await updateArrivalSignal(bookingId, "charging");
-    await updateBookingStatus(bookingId, "in_progress", "Driver started charging");
-  }, []);
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["bookings"] });
 
-  const leaveReview = useCallback(
-    async (booking: Booking, rating: number, comment: string) => {
-      await createReview({
-        bookingId: booking.id,
-        chargerId: booking.chargerId,
-        driverUserId: booking.driverUserId,
-        hostUserId: booking.hostUserId,
-        rating,
-        comment,
-      });
-    },
-    []
-  );
+  const cancelMutation = useMutation({
+    mutationFn: (bookingId: string) => updateBookingStatus(bookingId, "cancelled"),
+    onSuccess: invalidate,
+  });
+
+  const arriveMutation = useMutation({
+    mutationFn: (bookingId: string) => updateArrivalSignal(bookingId, "arrived"),
+    onSuccess: invalidate,
+  });
+
+  const chargingMutation = useMutation({
+    mutationFn: (bookingId: string) => updateArrivalSignal(bookingId, "charging"),
+    onSuccess: invalidate,
+  });
+
+  const reviewMutation = useMutation({
+    mutationFn: (input: { booking: Booking; rating: number; comment: string }) =>
+      createReview({
+        bookingId: input.booking.id,
+        chargerId: input.booking.chargerId,
+        driverUserId: input.booking.driverUserId,
+        hostUserId: input.booking.hostUserId,
+        rating: input.rating,
+        comment: input.comment,
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["reviews"] }),
+  });
 
   return {
-    data: {
-      bookings,
-      bySegment,
-      chargersById,
+    data: { bookings, bySegment, chargersById },
+    reviewedBookingIds,
+    reviewRatingsByBookingId,
+    isLoading: bookingsQuery.isLoading || reviewsQuery.isLoading,
+    error: bookingsQuery.error?.message || null,
+    refresh: async () => {
+      await Promise.all([bookingsQuery.refetch(), chargersQuery.refetch(), reviewsQuery.refetch()]);
     },
-    isLoading,
-    error,
-    refresh,
     actions: {
-      cancelBooking,
-      markArrived,
-      startCharging,
-      leaveReview,
+      cancelBooking: (bookingId: string) => cancelMutation.mutateAsync(bookingId),
+      markArrived: (bookingId: string) => arriveMutation.mutateAsync(bookingId),
+      startCharging: (bookingId: string) => chargingMutation.mutateAsync(bookingId),
+      leaveReview: (booking: Booking, rating: number, comment: string) =>
+        reviewMutation.mutateAsync({ booking, rating, comment }),
     },
   };
 }

@@ -1,8 +1,4 @@
-export type ChargerStatus =
-  | "pending_verification"
-  | "verified"
-  | "suspended"
-  | "rejected";
+export type ChargerStatus = "pending" | "approved" | "rejected";
 
 export type ConnectorType = "CCS2" | "CHAdeMO" | "Type2" | "Tesla";
 export type AvailabilityDay = "Mon" | "Tue" | "Wed" | "Thu" | "Fri" | "Sat" | "Sun";
@@ -34,6 +30,7 @@ export interface Charger {
   amenities: string[];
   availabilityNote: string;
   availabilityWindow?: ChargerAvailabilityWindow;
+  images: string[];
   status: ChargerStatus;
   verificationScore: number;
   createdAtIso: string;
@@ -53,6 +50,7 @@ export interface UpsertChargerInput {
   amenities: string[];
   availabilityNote: string;
   availabilityWindow?: ChargerAvailabilityWindow;
+  images?: string[];
 }
 
 export interface ChargerFilter {

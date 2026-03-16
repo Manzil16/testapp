@@ -21,6 +21,18 @@ export interface RoutingSuccess extends RouteData {
 
 export type RoutingResult = RoutingSuccess | RoutingFailure;
 
+export async function getRoute(
+  from: { latitude: number; longitude: number },
+  to: { latitude: number; longitude: number },
+  signal?: AbortSignal
+): Promise<RouteData> {
+  const result = await getRouteData(from.latitude, from.longitude, to.latitude, to.longitude, signal);
+  if (!result.ok) {
+    throw new Error(result.message);
+  }
+  return { distanceKm: result.distanceKm, durationMinutes: result.durationMinutes, polyline: result.polyline };
+}
+
 export async function getRouteData(
   fromLat: number,
   fromLng: number,

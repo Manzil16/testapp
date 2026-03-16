@@ -31,11 +31,11 @@ import { useTripPlanner } from "@/src/hooks";
 
 export default function TripPlannerScreen() {
   const router = useRouter();
-  const { authUser, sessionUser, profile } = useAuth();
+  const { user, profile } = useAuth();
 
   const userId = useMemo(
-    () => authUser?.uid || sessionUser?.uid,
-    [authUser?.uid, sessionUser?.uid]
+    () => user?.id,
+    [user?.id]
   );
 
   const { data, isLoading, isPlanning, error, actions } = useTripPlanner(
@@ -182,7 +182,7 @@ export default function TripPlannerScreen() {
             <View style={styles.metricRow}>
               <View style={styles.metricBox}>
                 <Text style={styles.metricLabel}>Battery Used</Text>
-                <Text style={styles.metricValue}>{data.summary.consumedPercent.toFixed(1)}%</Text>
+                <Text style={styles.metricValue}>{(Number(data.batteryPercent) - data.summary.projectedArrivalPercent).toFixed(1)}%</Text>
               </View>
               <View style={styles.metricBox}>
                 <Text style={styles.metricLabel}>Arrival</Text>
@@ -190,14 +190,14 @@ export default function TripPlannerScreen() {
               </View>
             </View>
 
-            {!data.summary.directFeasible ? (
+            {data.summary.needsCharge ? (
               <>
                 <SectionTitle
                   title="Suggested Chargers"
                   subtitle="Route needs an intermediate charging stop"
                 />
                 <FlatList
-                  data={data.summary.recommendedChargers}
+                  data={data.summary.recommendedCharger ? [data.summary.recommendedCharger] : []}
                   keyExtractor={(item) => item.id}
                   scrollEnabled={false}
                   renderItem={({ item }) => (
@@ -207,7 +207,7 @@ export default function TripPlannerScreen() {
                     >
                       <Text style={styles.recommendName}>{item.name}</Text>
                       <Text style={styles.recommendMeta}>
-                        {item.maxPowerKw}kW • ${item.pricingPerKwh.toFixed(2)}/kWh
+                        {item.address}
                       </Text>
                     </TouchableOpacity>
                   )}
@@ -241,7 +241,7 @@ export default function TripPlannerScreen() {
             <SectionTitle title="Trip History" topSpacing={Spacing.xs} />
             {data.savedTrips.slice(0, 5).map((trip) => (
               <View key={trip.id} style={styles.tripHistoryRow}>
-                <View style={{ flex: 1 }}>
+                <View style={styles.tripHistoryContent}>
                   <Text style={styles.tripHistoryLabel}>
                     {trip.origin.label} → {trip.destination.label}
                   </Text>
@@ -349,6 +349,9 @@ const styles = StyleSheet.create({
   tripHistoryMeta: {
     ...Typography.caption,
     marginTop: 2,
+  },
+  tripHistoryContent: {
+    flex: 1,
   },
   tripHistoryBattery: {
     ...Typography.cardTitle,

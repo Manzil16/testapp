@@ -1,8 +1,11 @@
+import { useCallback } from "react";
 import { Image, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { Tabs } from "expo-router";
+import { Tabs, useRouter } from "expo-router";
 import { useAuth } from "@/src/features/auth/auth-context";
-import { Colors, Shadows, Spacing, Typography } from "@/src/features/shared/theme";
+import { BadgeWrapper } from "@/src/components";
+import { Colors, Shadows, Typography } from "@/src/features/shared/theme";
+import { useBadgeCounts } from "@/src/hooks";
 
 function icon(name: keyof typeof Ionicons.glyphMap) {
   const TabIcon = ({ color, size }: { color: string; size: number }) => (
@@ -14,7 +17,7 @@ function icon(name: keyof typeof Ionicons.glyphMap) {
 
 const sharedOptions = {
   headerShown: false,
-  tabBarActiveTintColor: Colors.primary,
+  tabBarActiveTintColor: Colors.accent,
   tabBarInactiveTintColor: Colors.textMuted,
   tabBarLabelStyle: {
     ...Typography.caption,
@@ -26,53 +29,98 @@ const sharedOptions = {
     paddingBottom: 8,
     borderTopWidth: 0,
     backgroundColor: Colors.surface,
+    borderTopColor: Colors.border,
     ...Shadows.modal,
   },
 };
 
 export default function AppTabsLayout() {
+  const router = useRouter();
   const { profile } = useAuth();
+  const { counts, targets } = useBadgeCounts();
   const role = profile?.role || "driver";
 
   const isDriver = role === "driver";
   const isHost = role === "host";
   const isAdmin = role === "admin";
 
-  // Avatar tab icon for profile
   const avatarUri = profile?.avatarUrl;
-  const ProfileTabIcon = ({ color, size }: { color: string; size: number }) => {
-    if (avatarUri) {
-      const avatarSize = size - 2;
-      const isActive = color === Colors.primary;
-      return (
+
+  const BookingsIcon = useCallback(
+    ({ color, size }: { color: string; size: number }) => (
+      <BadgeWrapper count={counts.sessions}>
+        <Ionicons name="calendar" size={size} color={color} />
+      </BadgeWrapper>
+    ),
+    [counts.sessions]
+  );
+
+  const HostHomeIcon = useCallback(
+    ({ color, size }: { color: string; size: number }) => (
+      <BadgeWrapper count={counts.messages}>
+        <Ionicons name="home" size={size} color={color} />
+      </BadgeWrapper>
+    ),
+    [counts.messages]
+  );
+
+  const HostChargersIcon = useCallback(
+    ({ color, size }: { color: string; size: number }) => (
+      <BadgeWrapper count={counts.chargerUpdates}>
+        <Ionicons name="flash" size={size} color={color} />
+      </BadgeWrapper>
+    ),
+    [counts.chargerUpdates]
+  );
+
+  const HostBookingsIcon = useCallback(
+    ({ color, size }: { color: string; size: number }) => (
+      <BadgeWrapper count={counts.sessions}>
+        <Ionicons name="calendar" size={size} color={color} />
+      </BadgeWrapper>
+    ),
+    [counts.sessions]
+  );
+
+  const ProfileTabIcon = useCallback(
+    ({ color, size }: { color: string; size: number }) => {
+      const inner = avatarUri ? (
         <View
           style={[
             styles.avatarTab,
             {
-              width: avatarSize,
-              height: avatarSize,
-              borderRadius: avatarSize / 2,
-              borderColor: isActive ? Colors.primary : Colors.border,
+              width: size - 2,
+              height: size - 2,
+              borderRadius: (size - 2) / 2,
+              borderColor: color === Colors.accent ? Colors.accent : Colors.border,
             },
           ]}
         >
           <Image
             source={{ uri: avatarUri }}
             style={{
-              width: avatarSize - 4,
-              height: avatarSize - 4,
-              borderRadius: (avatarSize - 4) / 2,
+              width: size - 6,
+              height: size - 6,
+              borderRadius: (size - 6) / 2,
             }}
           />
         </View>
+      ) : (
+        <Ionicons name="person-circle" size={size} color={color} />
       );
-    }
-    return <Ionicons name="person-circle" size={size} color={color} />;
-  };
+
+      return (
+        <BadgeWrapper count={counts.profile}>
+          {inner}
+        </BadgeWrapper>
+      );
+    },
+    [avatarUri, counts.profile]
+  );
 
   return (
     <Tabs screenOptions={sharedOptions}>
-      {/* ── Driver tabs ── */}
+      {/* Driver tabs */}
       <Tabs.Screen
         name="dashboard"
         options={{
@@ -102,17 +150,33 @@ export default function AppTabsLayout() {
         options={{
           title: "Bookings",
           href: isDriver ? undefined : null,
-          tabBarIcon: icon("calendar"),
+          tabBarIcon: BookingsIcon,
+        }}
+        listeners={{
+          tabPress: (event) => {
+            if (counts.sessions > 0) {
+              event.preventDefault();
+              router.push("/(app)/session-history?filter=unrated" as any);
+            }
+          },
         }}
       />
 
-      {/* ── Host tabs ── */}
+      {/* Host tabs */}
       <Tabs.Screen
         name="host-home"
         options={{
           title: "Home",
           href: isHost ? undefined : null,
-          tabBarIcon: icon("home"),
+          tabBarIcon: HostHomeIcon,
+        }}
+        listeners={{
+          tabPress: (event) => {
+            if (counts.messages > 0) {
+              event.preventDefault();
+              router.push("/(app)/notifications" as any);
+            }
+          },
         }}
       />
       <Tabs.Screen
@@ -120,7 +184,15 @@ export default function AppTabsLayout() {
         options={{
           title: "Chargers",
           href: isHost ? undefined : null,
-          tabBarIcon: icon("flash"),
+          tabBarIcon: HostChargersIcon,
+        }}
+        listeners={{
+          tabPress: (event) => {
+            if (counts.chargerUpdates > 0 && targets.chargerUpdateChargerId) {
+              event.preventDefault();
+              router.push(`/(app)/chargers/${targets.chargerUpdateChargerId}?fromBadge=chargerUpdates` as any);
+            }
+          },
         }}
       />
       <Tabs.Screen
@@ -128,11 +200,19 @@ export default function AppTabsLayout() {
         options={{
           title: "Bookings",
           href: isHost ? undefined : null,
-          tabBarIcon: icon("calendar"),
+          tabBarIcon: HostBookingsIcon,
+        }}
+        listeners={{
+          tabPress: (event) => {
+            if (counts.sessions > 0) {
+              event.preventDefault();
+              router.push("/(app)/session-history?filter=unrated" as any);
+            }
+          },
         }}
       />
 
-      {/* ── Admin tabs ── */}
+      {/* Admin tabs */}
       <Tabs.Screen
         name="admin-overview"
         options={{
@@ -166,13 +246,24 @@ export default function AppTabsLayout() {
         }}
       />
 
-      {/* ── Profile (driver + host) ── */}
+      {/* Profile (driver + host) */}
       <Tabs.Screen
         name="profile"
         options={{
           title: "Profile",
           href: isDriver || isHost ? undefined : null,
           tabBarIcon: ProfileTabIcon,
+        }}
+        listeners={{
+          tabPress: (event) => {
+            if (counts.profile > 0) {
+              event.preventDefault();
+              const focusField = targets.profileMissingField
+                ? `?focusField=${targets.profileMissingField}`
+                : "";
+              router.push(`/(app)/(tabs)/profile${focusField}` as any);
+            }
+          },
         }}
       />
 

@@ -12,3 +12,5 @@ export * from "./useVehicleProfile";
 export * from "./useReviews";
 export * from "./useAvatarUpload";
 export * from "./useEntranceAnimation";
+export * from "./useSettings";
+export * from "./useBadgeCounts";

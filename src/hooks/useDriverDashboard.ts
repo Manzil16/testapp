@@ -1,165 +1,61 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  listBookingsByDriver,
-  listenToBookingsByDriver,
-  type Booking,
-} from "@/src/features/bookings";
-import {
-  listChargers,
-  listenToChargers,
-  type Charger,
-} from "@/src/features/chargers";
-import { listTripsByUser, listenToTripsByUser, type Trip } from "@/src/features/trips";
-import {
-  listVehiclesByUser,
-  listenToVehiclesByUser,
-  type Vehicle,
-} from "@/src/features/vehicles";
-
-interface DriverDashboardData {
-  activeBooking: Booking | null;
-  nearbyChargers: Charger[];
-  chargersById: Record<string, Charger>;
-  stats: {
-    totalBookings: number;
-    totalTrips: number;
-    vehiclesRegistered: number;
-  };
-  bookings: Booking[];
-  trips: Trip[];
-  vehicles: Vehicle[];
-}
-
-const activeStatuses = new Set(["requested", "approved", "in_progress"]);
+import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { listBookingsByDriver } from "../features/bookings/booking.repository";
+import { listChargers } from "../features/chargers/charger.repository";
+import { listTripsByUser } from "../features/trips/trip.repository";
+import { listVehiclesByUser } from "../features/vehicles/vehicle.repository";
+import type { Booking } from "../features/bookings/booking.types";
+import type { Charger } from "../features/chargers/charger.types";
 
 export function useDriverDashboard(userId?: string) {
-  const [bookings, setBookings] = useState<Booking[]>([]);
-  const [trips, setTrips] = useState<Trip[]>([]);
-  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
-  const [chargers, setChargers] = useState<Charger[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const bookingsQuery = useQuery({
+    queryKey: ["bookings", "driver", userId],
+    queryFn: () => listBookingsByDriver(userId!),
+    enabled: Boolean(userId),
+  });
 
-  useEffect(() => {
-    if (!userId) {
-      setBookings([]);
-      setTrips([]);
-      setVehicles([]);
-      setChargers([]);
-      setError(null);
-      setIsLoading(false);
-      return;
-    }
+  const chargersQuery = useQuery({
+    queryKey: ["chargers", "approved"],
+    queryFn: () => listChargers({ status: "approved" }),
+    enabled: Boolean(userId),
+  });
 
-    setIsLoading(true);
-    setError(null);
-    let bookingsReady = false;
-    let tripsReady = false;
-    let vehiclesReady = false;
-    let chargersReady = false;
+  const tripsQuery = useQuery({
+    queryKey: ["trips", userId],
+    queryFn: () => listTripsByUser(userId!),
+    enabled: Boolean(userId),
+  });
 
-    const markReady = () => {
-      if (bookingsReady && tripsReady && vehiclesReady && chargersReady) {
-        setIsLoading(false);
-      }
-    };
+  const vehiclesQuery = useQuery({
+    queryKey: ["vehicles", userId],
+    queryFn: () => listVehiclesByUser(userId!),
+    enabled: Boolean(userId),
+  });
 
-    const unsubBookings = listenToBookingsByDriver(
-      userId,
-      (items) => {
-        setBookings(items);
-        bookingsReady = true;
-        markReady();
-      },
-      (message) => {
-        setError(message);
-        bookingsReady = true;
-        markReady();
-      }
-    );
+  const bookings = useMemo(() => bookingsQuery.data ?? [], [bookingsQuery.data]);
+  const chargers = useMemo(() => chargersQuery.data ?? [], [chargersQuery.data]);
+  const trips = useMemo(() => tripsQuery.data ?? [], [tripsQuery.data]);
+  const vehicles = useMemo(() => vehiclesQuery.data ?? [], [vehiclesQuery.data]);
 
-    const unsubTrips = listenToTripsByUser(
-      userId,
-      (items) => {
-        setTrips(items);
-        tripsReady = true;
-        markReady();
-      },
-      (message) => {
-        setError(message);
-        tripsReady = true;
-        markReady();
-      }
-    );
+  const activeBooking = useMemo(
+    () =>
+      bookings.find(
+        (b: Booking) => b.status === "approved" || b.status === "in_progress"
+      ) ?? null,
+    [bookings]
+  );
 
-    const unsubVehicles = listenToVehiclesByUser(
-      userId,
-      (items) => {
-        setVehicles(items);
-        vehiclesReady = true;
-        markReady();
-      },
-      (message) => {
-        setError(message);
-        vehiclesReady = true;
-        markReady();
-      }
-    );
+  const chargersById = useMemo(() => {
+    const map: Record<string, Charger> = {};
+    for (const c of chargers) map[c.id] = c;
+    return map;
+  }, [chargers]);
 
-    const unsubChargers = listenToChargers(
-      (items) => {
-        setChargers(items.filter((item) => item.status === "verified"));
-        chargersReady = true;
-        markReady();
-      },
-      undefined,
-      (message) => {
-        setError(message);
-        chargersReady = true;
-        markReady();
-      }
-    );
-
-    return () => {
-      unsubBookings();
-      unsubTrips();
-      unsubVehicles();
-      unsubChargers();
-    };
-  }, [userId]);
-
-  const refresh = useCallback(async () => {
-    if (!userId) {
-      return;
-    }
-
-    try {
-      setError(null);
-      const [bookingsResult, tripsResult, vehiclesResult, chargersResult] = await Promise.all([
-        listBookingsByDriver(userId),
-        listTripsByUser(userId),
-        listVehiclesByUser(userId),
-        listChargers({ status: "verified" }),
-      ]);
-
-      setBookings(bookingsResult);
-      setTrips(tripsResult);
-      setVehicles(vehiclesResult);
-      setChargers(chargersResult);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to refresh dashboard.");
-    }
-  }, [userId]);
-
-  const data = useMemo<DriverDashboardData>(() => {
-    const sortedActive = [...bookings]
-      .filter((item) => activeStatuses.has(item.status))
-      .sort((a, b) => a.startTimeIso.localeCompare(b.startTimeIso));
-
-    return {
-      activeBooking: sortedActive[0] || null,
-      nearbyChargers: chargers.slice(0, 8),
-      chargersById: Object.fromEntries(chargers.map((item) => [item.id, item])),
+  return {
+    data: {
+      activeBooking,
+      nearbyChargers: chargers.slice(0, 5),
+      chargersById,
       stats: {
         totalBookings: bookings.length,
         totalTrips: trips.length,
@@ -168,13 +64,16 @@ export function useDriverDashboard(userId?: string) {
       bookings,
       trips,
       vehicles,
-    };
-  }, [bookings, chargers, trips, vehicles]);
-
-  return {
-    data,
-    isLoading,
-    error,
-    refresh,
+    },
+    isLoading: bookingsQuery.isLoading || chargersQuery.isLoading,
+    error: bookingsQuery.error?.message || chargersQuery.error?.message || null,
+    refresh: async () => {
+      await Promise.all([
+        bookingsQuery.refetch(),
+        chargersQuery.refetch(),
+        tripsQuery.refetch(),
+        vehiclesQuery.refetch(),
+      ]);
+    },
   };
 }

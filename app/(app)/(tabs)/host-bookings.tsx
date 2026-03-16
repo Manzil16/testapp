@@ -21,13 +21,6 @@ import {
 import { useAuth } from "@/src/features/auth/auth-context";
 import { type HostBookingSegment, useHostBookings, useEntranceAnimation, useRefresh } from "@/src/hooks";
 
-const SEGMENT_ICONS: Record<HostBookingSegment, string> = {
-  pending: "time-outline",
-  active: "flash-outline",
-  completed: "checkmark-circle-outline",
-  declined: "close-circle-outline",
-};
-
 const SEGMENT_EMPTY: Record<HostBookingSegment, { icon: string; title: string; message: string }> = {
   pending: { icon: "time-outline", title: "No pending requests", message: "New booking requests from drivers will appear here." },
   active: { icon: "flash-outline", title: "No active sessions", message: "Active charging sessions will show here." },
@@ -36,11 +29,11 @@ const SEGMENT_EMPTY: Record<HostBookingSegment, { icon: string; title: string; m
 };
 
 export default function HostBookingsTabScreen() {
-  const { authUser, sessionUser } = useAuth();
+  const { user } = useAuth();
   const entranceStyle = useEntranceAnimation();
   const userId = useMemo(
-    () => authUser?.uid || sessionUser?.uid,
-    [authUser?.uid, sessionUser?.uid]
+    () => user?.id,
+    [user?.id]
   );
 
   const { data, isLoading, error, refresh, actions } = useHostBookings(userId);
@@ -191,7 +184,7 @@ export default function HostBookingsTabScreen() {
                                 onPress={() => actions.approveBooking(item)}
                                 style={styles.approveBtn}
                               >
-                                <Ionicons name="checkmark" size={16} color="#FFF" />
+                                <Ionicons name="checkmark" size={16} color={Colors.textInverse} />
                                 <Text style={styles.approveBtnText}>Approve</Text>
                               </PressableScale>
                             </>
@@ -201,7 +194,7 @@ export default function HostBookingsTabScreen() {
                               onPress={() => actions.markCompleted(item)}
                               style={styles.completeBtn}
                             >
-                              <Ionicons name="checkmark-done" size={16} color="#FFF" />
+                              <Ionicons name="checkmark-done" size={16} color={Colors.textInverse} />
                               <Text style={styles.completeBtnText}>Mark Complete</Text>
                             </PressableScale>
                           )}
@@ -362,7 +355,7 @@ const styles = StyleSheet.create({
   approveBtnText: {
     fontSize: 14,
     fontWeight: "600",
-    color: "#FFF",
+    color: Colors.textInverse,
   },
   completeBtn: {
     flex: 1,
@@ -378,7 +371,7 @@ const styles = StyleSheet.create({
   completeBtnText: {
     fontSize: 14,
     fontWeight: "600",
-    color: "#FFF",
+    color: Colors.textInverse,
   },
 
   // Empty

@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
-import { useRouter } from "expo-router";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useFocusEffect } from "@react-navigation/native";
 import {
   FlatList,
   Pressable,
@@ -31,18 +32,32 @@ import {
 } from "@/src/components";
 import { useAuth } from "@/src/features/auth/auth-context";
 import { type Booking } from "@/src/features/bookings";
-import { useDriverBookings, useEntranceAnimation, useRefresh } from "@/src/hooks";
+import { useBadgeCounts, useDriverBookings, useEntranceAnimation, useRefresh } from "@/src/hooks";
 
 export default function DriverBookingsScreen() {
   const router = useRouter();
-  const { authUser, sessionUser } = useAuth();
+  const { segment: segmentParam, filter, fromBadge } = useLocalSearchParams<{
+    segment?: string;
+    filter?: string;
+    fromBadge?: string;
+  }>();
+  const { user } = useAuth();
   const entranceStyle = useEntranceAnimation();
+  const { markSessionsSeen } = useBadgeCounts();
   const userId = useMemo(
-    () => authUser?.uid || sessionUser?.uid,
-    [authUser?.uid, sessionUser?.uid]
+    () => user?.id,
+    [user?.id]
   );
 
-  const { data, isLoading, error, refresh, actions } = useDriverBookings(userId);
+  const {
+    data,
+    reviewedBookingIds,
+    reviewRatingsByBookingId,
+    isLoading,
+    error,
+    refresh,
+    actions,
+  } = useDriverBookings(userId);
   const { refreshing, onRefresh } = useRefresh(refresh);
 
   const [segment, setSegment] = useState<"upcoming" | "active" | "past">("upcoming");
@@ -53,7 +68,29 @@ export default function DriverBookingsScreen() {
   const [toastVisible, setToastVisible] = useState(false);
   const [toastText, setToastText] = useState("");
 
-  const list = data.bySegment[segment];
+  useEffect(() => {
+    if (segmentParam === "upcoming" || segmentParam === "active" || segmentParam === "past") {
+      setSegment(segmentParam);
+    }
+  }, [segmentParam]);
+
+  const isUnratedFilter = filter === "unrated";
+
+  useFocusEffect(
+    useCallback(() => {
+      if (isUnratedFilter || fromBadge === "sessions") {
+        void markSessionsSeen();
+      }
+    }, [fromBadge, isUnratedFilter, markSessionsSeen])
+  );
+
+  const list = useMemo(() => {
+    const segmentList = data.bySegment[segment];
+    if (!isUnratedFilter || segment !== "past") {
+      return segmentList;
+    }
+    return segmentList.filter((booking) => booking.status === "completed" && !reviewedBookingIds.has(booking.id));
+  }, [data.bySegment, isUnratedFilter, reviewedBookingIds, segment]);
 
   const showToast = (message: string) => {
     setToastText(message);
@@ -121,7 +158,7 @@ export default function DriverBookingsScreen() {
               showsVerticalScrollIndicator={false}
               renderItem={({ item, index }) => {
                 const charger = data.chargersById[item.chargerId];
-                const reviewedRating = reviewedIds[item.id];
+                const reviewedRating = reviewedIds[item.id] ?? reviewRatingsByBookingId[item.id];
                 const isPast = segment === "past";
                 const isCancelled = item.status === "cancelled" || item.status === "declined";
                 const primaryAction =
@@ -284,7 +321,7 @@ const styles = StyleSheet.create({
     color: Colors.border,
   },
   starActive: {
-    color: "#F5A623",
+    color: Colors.warning,
   },
   ratingText: {
     fontSize: 14,

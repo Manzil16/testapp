@@ -34,6 +34,11 @@ export { BookingTimeline } from "./ui/BookingTimeline";
 export { QuickActionButton } from "./ui/QuickActionButton";
 export { AnimatedListItem } from "./ui/AnimatedListItem";
 export { PressableScale } from "./ui/PressableScale";
+export { ImageGallery } from "./ui/ImageGallery";
+export { PremiumCard } from "./ui/PremiumCard";
+export { GradientButton } from "./ui/GradientButton";
+export { NetworkBanner } from "./ui/NetworkBanner";
+export { BadgeWrapper } from "./ui/BadgeWrapper";
 
 // Cards
 export { StatCard } from "./cards/StatCard";

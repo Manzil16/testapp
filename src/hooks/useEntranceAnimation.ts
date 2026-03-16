@@ -21,7 +21,7 @@ export function useEntranceAnimation() {
   useEffect(() => {
     opacity.value = withTiming(1, { duration: 280, easing: Easing.out(Easing.ease) });
     translateY.value = withTiming(0, { duration: 280, easing: Easing.out(Easing.ease) });
-  }, []);
+  }, [opacity, translateY]);
 
   return useAnimatedStyle(() => ({
     opacity: opacity.value,

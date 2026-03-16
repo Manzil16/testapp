@@ -1,358 +1,102 @@
-import {
-  addDoc,
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  onSnapshot,
-  orderBy,
-  query,
-  updateDoc,
-  where,
-  type Timestamp,
-} from "firebase/firestore";
-import { db } from "../../firebaseConfig";
-import { buildServerTimestampFields, timestampToIso } from "../shared/firestore-utils";
+import { supabase } from "../../lib/supabase";
 import type { Booking, BookingStatus, CreateBookingInput } from "./booking.types";
-import type { AvailabilityDay, ChargerAvailabilityWindow } from "../chargers/charger.types";
-import {
-  DEV_PREVIEW_MODE,
-  DEV_PREVIEW_STATE,
-  createDevId,
-  isFirebasePermissionError,
-  logDevPreviewFallback,
-} from "../shared/dev-preview";
 
-const BOOKING_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 hours
+const BOOKING_EXPIRY_MS = 24 * 60 * 60 * 1000;
 
-interface BookingDoc {
-  chargerId: string;
-  driverUserId: string;
-  hostUserId: string;
-  startTimeIso: string;
-  endTimeIso: string;
-  estimatedKWh: number;
-  note: string;
-  status: BookingStatus;
-  arrivalSignal: Booking["arrivalSignal"];
-  expiresAtIso?: string;
-  createdAt?: Timestamp;
-  updatedAt?: Timestamp;
-}
+function mapRow(row: Record<string, unknown>): Booking {
+  const createdAt = row.created_at as string;
+  let effectiveStatus = row.status as BookingStatus;
 
-interface ChargerAvailabilityDoc {
-  hostUserId?: string;
-  availabilityWindow?: ChargerAvailabilityWindow;
-  availabilityNote?: string;
-}
-
-function mapBooking(id: string, docData: BookingDoc): Booking {
-  const createdAtIso = timestampToIso(docData.createdAt);
-
-  // Auto-expire: if booking is still "requested" and past its expiry, treat as expired
-  let effectiveStatus = docData.status;
-  if (effectiveStatus === "requested") {
-    const expiresAt = docData.expiresAtIso
-      ? new Date(docData.expiresAtIso).getTime()
-      : new Date(createdAtIso).getTime() + BOOKING_EXPIRY_MS;
-    if (Date.now() > expiresAt) {
+  // Auto-expire: if still "requested" and past expiry
+  if (effectiveStatus === "requested" && row.expires_at) {
+    if (Date.now() > new Date(row.expires_at as string).getTime()) {
       effectiveStatus = "cancelled";
     }
   }
 
   return {
-    id,
-    chargerId: docData.chargerId,
-    driverUserId: docData.driverUserId,
-    hostUserId: docData.hostUserId,
-    startTimeIso: docData.startTimeIso,
-    endTimeIso: docData.endTimeIso,
-    estimatedKWh: docData.estimatedKWh,
-    note: effectiveStatus !== docData.status ? "Expired — host did not respond" : docData.note,
+    id: row.id as string,
+    chargerId: row.charger_id as string,
+    driverUserId: row.driver_id as string,
+    hostUserId: row.host_id as string,
+    startTimeIso: row.start_time as string,
+    endTimeIso: row.end_time as string,
+    estimatedKWh: Number(row.estimated_kwh),
+    totalAmount: Number(row.total_amount),
+    platformFee: Number(row.platform_fee),
+    note: effectiveStatus !== (row.status as string) ? "Expired — host did not respond" : (row.note as string),
     status: effectiveStatus,
-    arrivalSignal: docData.arrivalSignal,
-    expiresAtIso: docData.expiresAtIso,
-    createdAtIso,
-    updatedAtIso: timestampToIso(docData.updatedAt),
+    arrivalSignal: row.arrival_signal as Booking["arrivalSignal"],
+    expiresAtIso: (row.expires_at as string) || undefined,
+    stripePaymentIntentId: (row.stripe_payment_intent_id as string) || undefined,
+    createdAtIso: createdAt,
+    updatedAtIso: row.updated_at as string,
   };
-}
-
-function errorMessage(error: unknown, fallback: string): string {
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
-  return fallback;
-}
-
-function parseTimeToMinutes(value: string): number | null {
-  const [hoursRaw, minutesRaw] = value.split(":");
-  const hours = Number(hoursRaw);
-  const minutes = Number(minutesRaw);
-  if (
-    !Number.isInteger(hours) ||
-    !Number.isInteger(minutes) ||
-    hours < 0 ||
-    hours > 23 ||
-    minutes < 0 ||
-    minutes > 59
-  ) {
-    return null;
-  }
-  return hours * 60 + minutes;
-}
-
-function parseAvailabilityFromNote(note?: string): ChargerAvailabilityWindow | undefined {
-  if (!note) {
-    return undefined;
-  }
-
-  const timeMatch = note.match(/(\d{2}:\d{2})\s*-\s*(\d{2}:\d{2})/);
-  if (!timeMatch) {
-    return undefined;
-  }
-
-  const dayMatches = note.match(/\b(Mon|Tue|Wed|Thu|Fri|Sat|Sun)\b/g) || [];
-  const uniqueDays = Array.from(new Set(dayMatches)) as AvailabilityDay[];
-  if (!uniqueDays.length) {
-    return undefined;
-  }
-
-  return {
-    days: uniqueDays,
-    startTime: timeMatch[1],
-    endTime: timeMatch[2],
-  };
-}
-
-const weekdayByIndex: ChargerAvailabilityWindow["days"] = [
-  "Sun",
-  "Mon",
-  "Tue",
-  "Wed",
-  "Thu",
-  "Fri",
-  "Sat",
-];
-
-function isInstantWithinWindow(date: Date, availabilityWindow: ChargerAvailabilityWindow): boolean {
-  const dayKey = weekdayByIndex[date.getDay()];
-  if (!availabilityWindow.days.includes(dayKey)) {
-    return false;
-  }
-
-  const startMinutes = parseTimeToMinutes(availabilityWindow.startTime);
-  const endMinutes = parseTimeToMinutes(availabilityWindow.endTime);
-  if (startMinutes === null || endMinutes === null) {
-    return false;
-  }
-
-  const currentMinutes = date.getHours() * 60 + date.getMinutes();
-  if (startMinutes <= endMinutes) {
-    return currentMinutes >= startMinutes && currentMinutes <= endMinutes;
-  }
-
-  // Overnight windows (e.g., 22:00-06:00)
-  return currentMinutes >= startMinutes || currentMinutes <= endMinutes;
-}
-
-function ensureBookingWithinAvailability(
-  startDate: Date,
-  endDate: Date,
-  availabilityWindow?: ChargerAvailabilityWindow
-) {
-  if (!availabilityWindow) {
-    return;
-  }
-
-  if (!isInstantWithinWindow(startDate, availabilityWindow)) {
-    throw new Error("Selected start time is outside host availability.");
-  }
-
-  if (!isInstantWithinWindow(endDate, availabilityWindow)) {
-    throw new Error("Selected end time is outside host availability.");
-  }
-}
-
-async function validateBookingRequest(input: CreateBookingInput): Promise<void> {
-  const startDate = new Date(input.startTimeIso);
-  const endDate = new Date(input.endTimeIso);
-
-  if (
-    Number.isNaN(startDate.getTime()) ||
-    Number.isNaN(endDate.getTime()) ||
-    endDate.getTime() <= startDate.getTime()
-  ) {
-    throw new Error("Booking time range is invalid.");
-  }
-
-  const chargerSnapshot = await getDoc(doc(db, "chargers", input.chargerId));
-  if (!chargerSnapshot.exists()) {
-    throw new Error("Selected charger could not be found.");
-  }
-
-  const chargerData = chargerSnapshot.data() as ChargerAvailabilityDoc;
-  if (chargerData.hostUserId && chargerData.hostUserId !== input.hostUserId) {
-    throw new Error("Booking host does not match charger host.");
-  }
-
-  ensureBookingWithinAvailability(
-    startDate,
-    endDate,
-    chargerData.availabilityWindow || parseAvailabilityFromNote(chargerData.availabilityNote)
-  );
-}
-
-function listDevBookingsByDriver(driverUserId: string): Booking[] {
-  return DEV_PREVIEW_STATE.bookings.filter((booking) => booking.driverUserId === driverUserId);
-}
-
-function listDevBookingsByHost(hostUserId: string): Booking[] {
-  return DEV_PREVIEW_STATE.bookings.filter((booking) => booking.hostUserId === hostUserId);
 }
 
 export async function createBookingRequest(input: CreateBookingInput): Promise<string> {
-  try {
-    await validateBookingRequest(input);
+  const startDate = new Date(input.startTimeIso);
+  const endDate = new Date(input.endTimeIso);
 
-    const expiresAtIso = new Date(Date.now() + BOOKING_EXPIRY_MS).toISOString();
-
-    const ref = await addDoc(collection(db, "bookings"), {
-      ...input,
-      note: input.note || "",
-      status: "requested",
-      arrivalSignal: "en_route",
-      expiresAtIso,
-      ...buildServerTimestampFields(true),
-    });
-
-    return ref.id;
-  } catch (error) {
-    if (!DEV_PREVIEW_MODE || !isFirebasePermissionError(error)) {
-      throw error;
-    }
-
-    logDevPreviewFallback("bookings.createBookingRequest", error);
-    const id = createDevId("dev-booking");
-    DEV_PREVIEW_STATE.bookings.push({
-      id,
-      chargerId: input.chargerId,
-      driverUserId: input.driverUserId,
-      hostUserId: input.hostUserId,
-      startTimeIso: input.startTimeIso,
-      endTimeIso: input.endTimeIso,
-      estimatedKWh: input.estimatedKWh,
-      note: input.note || "",
-      status: "requested",
-      arrivalSignal: "en_route",
-      expiresAtIso: new Date(Date.now() + BOOKING_EXPIRY_MS).toISOString(),
-      createdAtIso: new Date().toISOString(),
-      updatedAtIso: new Date().toISOString(),
-    });
-
-    return id;
+  if (isNaN(startDate.getTime()) || isNaN(endDate.getTime()) || endDate <= startDate) {
+    throw new Error("Booking time range is invalid.");
   }
+
+  // Calculate amounts
+  const charger = await supabase
+    .from("chargers")
+    .select("price_per_kwh, host_id")
+    .eq("id", input.chargerId)
+    .single();
+
+  if (charger.error) throw new Error("Selected charger could not be found.");
+
+  const pricePerKwh = Number(charger.data.price_per_kwh);
+  const totalAmount = pricePerKwh * input.estimatedKWh;
+  const platformFee = totalAmount * 0.2;
+  const expiresAt = new Date(Date.now() + BOOKING_EXPIRY_MS).toISOString();
+
+  const { data, error } = await supabase
+    .from("bookings")
+    .insert({
+      charger_id: input.chargerId,
+      driver_id: input.driverUserId,
+      host_id: input.hostUserId,
+      start_time: input.startTimeIso,
+      end_time: input.endTimeIso,
+      estimated_kwh: input.estimatedKWh,
+      total_amount: totalAmount,
+      platform_fee: platformFee,
+      note: input.note || "",
+      status: "requested",
+      arrival_signal: "en_route",
+      expires_at: expiresAt,
+    })
+    .select("id")
+    .single();
+
+  if (error) throw error;
+  return (data as { id: string }).id;
 }
 
 export async function listBookingsByDriver(driverUserId: string): Promise<Booking[]> {
-  const q = query(
-    collection(db, "bookings"),
-    where("driverUserId", "==", driverUserId),
-    orderBy("updatedAt", "desc")
-  );
-
-  try {
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map((booking) => mapBooking(booking.id, booking.data() as BookingDoc));
-  } catch (error) {
-    if (!DEV_PREVIEW_MODE || !isFirebasePermissionError(error)) {
-      throw error;
-    }
-
-    logDevPreviewFallback("bookings.listBookingsByDriver", error);
-    return listDevBookingsByDriver(driverUserId);
-  }
+  const { data, error } = await supabase
+    .from("bookings")
+    .select("*")
+    .eq("driver_id", driverUserId)
+    .order("updated_at", { ascending: false });
+  if (error) throw error;
+  return (data as Record<string, unknown>[]).map(mapRow);
 }
 
 export async function listBookingsByHost(hostUserId: string): Promise<Booking[]> {
-  const q = query(
-    collection(db, "bookings"),
-    where("hostUserId", "==", hostUserId),
-    orderBy("updatedAt", "desc")
-  );
-
-  try {
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map((booking) => mapBooking(booking.id, booking.data() as BookingDoc));
-  } catch (error) {
-    if (!DEV_PREVIEW_MODE || !isFirebasePermissionError(error)) {
-      throw error;
-    }
-
-    logDevPreviewFallback("bookings.listBookingsByHost", error);
-    return listDevBookingsByHost(hostUserId);
-  }
-}
-
-export function listenToBookingsByDriver(
-  driverUserId: string,
-  callback: (bookings: Booking[]) => void,
-  onError?: (message: string) => void
-): () => void {
-  const q = query(
-    collection(db, "bookings"),
-    where("driverUserId", "==", driverUserId),
-    orderBy("updatedAt", "desc")
-  );
-
-  const unsubscribe = onSnapshot(
-    q,
-    (snapshot) => {
-      callback(snapshot.docs.map((booking) => mapBooking(booking.id, booking.data() as BookingDoc)));
-    },
-    (error) => {
-      if (!DEV_PREVIEW_MODE || !isFirebasePermissionError(error)) {
-        onError?.(errorMessage(error, "Unable to listen for driver bookings."));
-        return;
-      }
-
-      logDevPreviewFallback("bookings.listenToBookingsByDriver", error);
-      callback(listDevBookingsByDriver(driverUserId));
-      unsubscribe();
-    }
-  );
-
-  return unsubscribe;
-}
-
-export function listenToBookingsByHost(
-  hostUserId: string,
-  callback: (bookings: Booking[]) => void,
-  onError?: (message: string) => void
-): () => void {
-  const q = query(
-    collection(db, "bookings"),
-    where("hostUserId", "==", hostUserId),
-    orderBy("updatedAt", "desc")
-  );
-
-  const unsubscribe = onSnapshot(
-    q,
-    (snapshot) => {
-      callback(snapshot.docs.map((booking) => mapBooking(booking.id, booking.data() as BookingDoc)));
-    },
-    (error) => {
-      if (!DEV_PREVIEW_MODE || !isFirebasePermissionError(error)) {
-        onError?.(errorMessage(error, "Unable to listen for host bookings."));
-        return;
-      }
-
-      logDevPreviewFallback("bookings.listenToBookingsByHost", error);
-      callback(listDevBookingsByHost(hostUserId));
-      unsubscribe();
-    }
-  );
-
-  return unsubscribe;
+  const { data, error } = await supabase
+    .from("bookings")
+    .select("*")
+    .eq("host_id", hostUserId)
+    .order("updated_at", { ascending: false });
+  if (error) throw error;
+  return (data as Record<string, unknown>[]).map(mapRow);
 }
 
 export async function updateBookingStatus(
@@ -360,54 +104,30 @@ export async function updateBookingStatus(
   status: BookingStatus,
   note?: string
 ): Promise<void> {
-  try {
-    await updateDoc(doc(db, "bookings", bookingId), {
-      status,
-      note: note ?? "",
-      ...buildServerTimestampFields(false),
-    });
-  } catch (error) {
-    if (!DEV_PREVIEW_MODE || !isFirebasePermissionError(error)) {
-      throw error;
-    }
+  const update: Record<string, unknown> = { status };
+  if (note !== undefined) update.note = note;
 
-    logDevPreviewFallback("bookings.updateBookingStatus", error);
-    DEV_PREVIEW_STATE.bookings = DEV_PREVIEW_STATE.bookings.map((booking) =>
-      booking.id === bookingId
-        ? {
-            ...booking,
-            status,
-            note: note ?? "",
-            updatedAtIso: new Date().toISOString(),
-          }
-        : booking
-    );
-  }
+  const { error } = await supabase.from("bookings").update(update).eq("id", bookingId);
+  if (error) throw error;
+}
+
+export async function listAllBookings(): Promise<Booking[]> {
+  const { data, error } = await supabase
+    .from("bookings")
+    .select("*")
+    .order("updated_at", { ascending: false })
+    .limit(250);
+  if (error) throw error;
+  return (data as Record<string, unknown>[]).map(mapRow);
 }
 
 export async function updateArrivalSignal(
   bookingId: string,
   signal: Booking["arrivalSignal"]
 ): Promise<void> {
-  try {
-    await updateDoc(doc(db, "bookings", bookingId), {
-      arrivalSignal: signal,
-      ...buildServerTimestampFields(false),
-    });
-  } catch (error) {
-    if (!DEV_PREVIEW_MODE || !isFirebasePermissionError(error)) {
-      throw error;
-    }
-
-    logDevPreviewFallback("bookings.updateArrivalSignal", error);
-    DEV_PREVIEW_STATE.bookings = DEV_PREVIEW_STATE.bookings.map((booking) =>
-      booking.id === bookingId
-        ? {
-            ...booking,
-            arrivalSignal: signal,
-            updatedAtIso: new Date().toISOString(),
-          }
-        : booking
-    );
-  }
+  const { error } = await supabase
+    .from("bookings")
+    .update({ arrival_signal: signal })
+    .eq("id", bookingId);
+  if (error) throw error;
 }

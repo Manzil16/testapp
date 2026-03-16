@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useLocalSearchParams } from "expo-router";
+import { useFocusEffect } from "@react-navigation/native";
 import {
   Alert,
   FlatList,
@@ -13,9 +14,11 @@ import {
   ChargerCardSkeleton,
   DateTimeInput,
   EmptyStateCard,
+  GradientButton,
+  ImageGallery,
   InfoPill,
   InputField,
-  PrimaryCTA,
+  PremiumCard,
   RatingStarsRow,
   ScreenContainer,
   SectionTitle,
@@ -24,21 +27,18 @@ import {
   Typography,
   Colors,
   Radius,
-  Shadows,
   Spacing,
 } from "@/src/components";
 import { useAuth } from "@/src/features/auth/auth-context";
-import { useChargerDetail } from "@/src/hooks";
+import { useBadgeCounts, useChargerDetail } from "@/src/hooks";
 import { getBookingAvailabilityError } from "@/src/hooks/useChargerDetail";
 
 export default function ChargerDetailRoute() {
-  const { chargerId } = useLocalSearchParams<{ chargerId: string }>();
-  const { authUser, sessionUser } = useAuth();
+  const { chargerId, fromBadge } = useLocalSearchParams<{ chargerId: string; fromBadge?: string }>();
+  const { user } = useAuth();
+  const { markChargerUpdatesSeen } = useBadgeCounts();
 
-  const userId = useMemo(
-    () => authUser?.uid || sessionUser?.uid,
-    [authUser?.uid, sessionUser?.uid]
-  );
+  const userId = useMemo(() => user?.id, [user?.id]);
 
   const { data, isLoading, error, requestBooking, refresh } = useChargerDetail(chargerId, userId);
 
@@ -48,15 +48,18 @@ export default function ChargerDetailRoute() {
   const [submitting, setSubmitting] = useState(false);
 
   const charger = data.charger;
-  const availabilityLabel = charger?.availabilityWindow
-    ? `${charger.availabilityWindow.days.join(", ")} ${charger.availabilityWindow.startTime}-${charger.availabilityWindow.endTime}`
-    : charger?.availabilityNote || "Host availability not specified.";
   const bookingValidationError = getBookingAvailabilityError(charger, startDate, endDate);
 
+  useFocusEffect(
+    useCallback(() => {
+      if (fromBadge === "chargerUpdates") {
+        void markChargerUpdatesSeen();
+      }
+    }, [fromBadge, markChargerUpdatesSeen])
+  );
+
   const submitBooking = async () => {
-    if (!charger) {
-      return;
-    }
+    if (!charger) return;
 
     if (bookingValidationError) {
       Alert.alert("Booking", bookingValidationError);
@@ -109,128 +112,145 @@ export default function ChargerDetailRoute() {
   return (
     <SafeAreaView style={styles.safe} edges={["bottom"]}>
       <ScreenContainer bottomInset={112}>
-        <Animated.View entering={FadeIn.duration(240)} style={styles.heroHeader}>
-          <Text style={styles.heroIcon}>⚡</Text>
-          <Text style={styles.heroText}>Image Upload Coming Soon</Text>
-        </Animated.View>
-
-        <Animated.View entering={FadeInDown.duration(260)} style={styles.mainCard}>
-          <View style={styles.titleRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={Typography.pageTitle}>{charger.name}</Text>
-              <Text style={Typography.body}>Hosted by {data.hostName}</Text>
+        {/* Image Gallery or Placeholder */}
+        <Animated.View entering={FadeIn.duration(240)}>
+          {charger.images && charger.images.length > 0 ? (
+            <ImageGallery images={charger.images} height={220} />
+          ) : (
+            <View style={styles.heroHeader}>
+              <Text style={styles.heroIcon}>⚡</Text>
+              <Text style={styles.heroText}>No photos yet</Text>
             </View>
-            <TrustBadge
-              type={charger.verificationScore > 85 ? "verified" : "community"}
-            />
-          </View>
-
-          <RatingStarsRow
-            rating={data.averageRating || 0}
-            count={data.totalReviews}
-            snippet={data.totalReviews ? undefined : "No reviews yet"}
-            style={styles.rating}
-          />
-
-          <View style={styles.pillRow}>
-            <InfoPill label={`${charger.maxPowerKw} kW`} variant="primary" />
-            <InfoPill label={charger.connectors.map((c) => c.type).join(" • ")} />
-            <InfoPill label={`$${charger.pricingPerKwh.toFixed(2)}/kWh`} variant="success" />
-            <InfoPill
-              label={charger.status.replace("_", " ")}
-              variant={charger.status === "verified" ? "success" : "warning"}
-            />
-          </View>
+          )}
         </Animated.View>
 
-        <Animated.View entering={FadeInDown.delay(80).duration(260)} style={styles.mainCard}>
-          <SectionTitle title="Amenities" topSpacing={Spacing.xs} />
-          <View style={styles.pillRow}>
-            {charger.amenities.length ? (
-              charger.amenities.map((amenity) => <InfoPill key={amenity} label={amenity} />)
-            ) : (
-              <InfoPill label="No amenities listed" />
-            )}
-          </View>
+        <Animated.View entering={FadeInDown.duration(260)}>
+          <PremiumCard style={styles.mainCard}>
+            <View style={styles.titleRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={Typography.pageTitle}>{charger.name}</Text>
+                <Text style={Typography.body}>Hosted by {data.hostName}</Text>
+              </View>
+              <TrustBadge
+                type={charger.verificationScore > 85 ? "verified" : "community"}
+              />
+            </View>
+
+            <RatingStarsRow
+              rating={data.averageRating || 0}
+              count={data.totalReviews}
+              snippet={data.totalReviews ? undefined : "No reviews yet"}
+              style={styles.rating}
+            />
+
+            <View style={styles.pillRow}>
+              <InfoPill label={`${charger.maxPowerKw} kW`} variant="primary" />
+              <InfoPill label={charger.connectors.map((c) => c.type).join(" • ")} />
+              <InfoPill label={`$${charger.pricingPerKwh.toFixed(2)}/kWh`} variant="success" />
+              <InfoPill
+                label={charger.status}
+                variant={charger.status === "approved" ? "success" : charger.status === "rejected" ? "error" : "warning"}
+              />
+            </View>
+          </PremiumCard>
         </Animated.View>
 
-        <Animated.View entering={FadeInDown.delay(120).duration(260)} style={styles.mainCard}>
-          <SectionTitle title="Availability" topSpacing={Spacing.xs} />
-          <View style={styles.availabilityBox}>
-            <Text style={styles.availabilityIcon}>🕐</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.availabilityTitle}>
-                {charger.availabilityWindow
-                  ? `${charger.availabilityWindow.startTime} – ${charger.availabilityWindow.endTime}`
-                  : charger.availabilityNote || "Always available"}
-              </Text>
-              {charger.availabilityWindow ? (
-                <View style={styles.dayRow}>
-                  {(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const).map((day) => (
-                    <View
-                      key={day}
-                      style={[
-                        styles.dayChip,
-                        charger.availabilityWindow?.days.includes(day) && styles.dayChipActive,
-                      ]}
-                    >
-                      <Text
+        <Animated.View entering={FadeInDown.delay(80).duration(260)}>
+          <PremiumCard style={styles.mainCard}>
+            <SectionTitle title="Amenities" topSpacing={Spacing.xs} />
+            <View style={styles.pillRow}>
+              {charger.amenities.length ? (
+                charger.amenities.map((amenity) => <InfoPill key={amenity} label={amenity} />)
+              ) : (
+                <InfoPill label="No amenities listed" />
+              )}
+            </View>
+          </PremiumCard>
+        </Animated.View>
+
+        <Animated.View entering={FadeInDown.delay(120).duration(260)}>
+          <PremiumCard style={styles.mainCard}>
+            <SectionTitle title="Availability" topSpacing={Spacing.xs} />
+            <View style={styles.availabilityBox}>
+              <Text style={styles.availabilityIcon}>🕐</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.availabilityTitle}>
+                  {charger.availabilityWindow
+                    ? `${charger.availabilityWindow.startTime} – ${charger.availabilityWindow.endTime}`
+                    : charger.availabilityNote || "Always available"}
+                </Text>
+                {charger.availabilityWindow ? (
+                  <View style={styles.dayRow}>
+                    {(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const).map((day) => (
+                      <View
+                        key={day}
                         style={[
-                          styles.dayChipText,
-                          charger.availabilityWindow?.days.includes(day) && styles.dayChipTextActive,
+                          styles.dayChip,
+                          charger.availabilityWindow?.days.includes(day) && styles.dayChipActive,
                         ]}
                       >
-                        {day}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
-              ) : null}
-            </View>
-          </View>
-        </Animated.View>
-
-        <Animated.View entering={FadeInDown.delay(160).duration(260)} style={styles.mainCard}>
-          <SectionTitle title="Book This Charger" topSpacing={Spacing.xs} />
-          <DateTimeInput label="Start" value={startDate} onChange={setStartDate} mode="datetime" />
-          <DateTimeInput label="End" value={endDate} onChange={setEndDate} mode="datetime" />
-          <InputField
-            label="Estimated Energy (kWh)"
-            value={String(estimatedKWh)}
-            onChangeText={(value) => setEstimatedKWh(Math.max(5, Number(value) || 5))}
-            keyboardType="numeric"
-          />
-          <Text style={styles.estimateText}>Estimated energy: {estimatedKWh} kWh</Text>
-          {bookingValidationError ? (
-            <Text style={styles.validationText}>{bookingValidationError}</Text>
-          ) : null}
-        </Animated.View>
-
-        <Animated.View entering={FadeInDown.delay(200).duration(260)} style={styles.mainCard}>
-          <SectionTitle title="Reviews" topSpacing={Spacing.xs} />
-          <FlatList
-            data={data.reviews}
-            keyExtractor={(item) => item.id}
-            scrollEnabled={false}
-            renderItem={({ item }) => (
-              <View style={styles.reviewRow}>
-                <RatingStarsRow rating={item.rating} />
-                <Text style={styles.reviewText}>{item.comment || "No review comment."}</Text>
+                        <Text
+                          style={[
+                            styles.dayChipText,
+                            charger.availabilityWindow?.days.includes(day) && styles.dayChipTextActive,
+                          ]}
+                        >
+                          {day}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
               </View>
-            )}
-            ListEmptyComponent={
-              <EmptyStateCard
-                icon="⭐"
-                title="No reviews yet"
-                message="Be the first to leave feedback after a completed booking."
-              />
-            }
-          />
+            </View>
+          </PremiumCard>
+        </Animated.View>
+
+        <Animated.View entering={FadeInDown.delay(160).duration(260)}>
+          <PremiumCard style={styles.mainCard}>
+            <SectionTitle title="Book This Charger" topSpacing={Spacing.xs} />
+            <DateTimeInput label="Start" value={startDate} onChange={setStartDate} mode="datetime" />
+            <DateTimeInput label="End" value={endDate} onChange={setEndDate} mode="datetime" />
+            <InputField
+              label="Estimated Energy (kWh)"
+              value={String(estimatedKWh)}
+              onChangeText={(value) => setEstimatedKWh(Math.max(5, Number(value) || 5))}
+              keyboardType="numeric"
+            />
+            <Text style={styles.estimateText}>Estimated energy: {estimatedKWh} kWh</Text>
+            {bookingValidationError ? (
+              <Text style={styles.validationText}>{bookingValidationError}</Text>
+            ) : null}
+          </PremiumCard>
+        </Animated.View>
+
+        <Animated.View entering={FadeInDown.delay(200).duration(260)}>
+          <PremiumCard style={styles.mainCard}>
+            <SectionTitle title="Reviews" topSpacing={Spacing.xs} />
+            <FlatList
+              data={data.reviews}
+              keyExtractor={(item) => item.id}
+              scrollEnabled={false}
+              renderItem={({ item }) => (
+                <View style={styles.reviewRow}>
+                  <RatingStarsRow rating={item.rating} />
+                  <Text style={styles.reviewText}>{item.comment || "No review comment."}</Text>
+                </View>
+              )}
+              ListEmptyComponent={
+                <EmptyStateCard
+                  icon="⭐"
+                  title="No reviews yet"
+                  message="Be the first to leave feedback after a completed booking."
+                />
+              }
+            />
+          </PremiumCard>
         </Animated.View>
       </ScreenContainer>
 
       <StickyActionBar>
-        <PrimaryCTA
+        <GradientButton
           label="Request Booking"
           onPress={submitBooking}
           loading={submitting}
@@ -246,29 +266,31 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.background,
   },
+  gallery: {
+    height: 220,
+    borderRadius: Radius.card,
+    marginBottom: Spacing.md,
+  },
   heroHeader: {
     height: 180,
     borderRadius: Radius.card,
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.surfaceAlt,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: Spacing.md,
-    ...Shadows.card,
+    borderWidth: 1,
+    borderColor: Colors.glassBorder,
   },
   heroIcon: {
     fontSize: 48,
   },
   heroText: {
     ...Typography.caption,
-    color: Colors.textInverse,
+    color: Colors.textMuted,
     marginTop: Spacing.xs,
   },
   mainCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.card,
-    padding: Spacing.cardPadding,
     marginBottom: Spacing.md,
-    ...Shadows.card,
   },
   titleRow: {
     flexDirection: "row",
@@ -292,7 +314,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "flex-start",
     gap: Spacing.sm,
-    backgroundColor: Colors.primaryLight,
+    backgroundColor: Colors.accentLight,
     borderRadius: Radius.md,
     padding: Spacing.sm,
     marginTop: Spacing.sm,
@@ -303,7 +325,6 @@ const styles = StyleSheet.create({
   },
   availabilityTitle: {
     ...Typography.cardTitle,
-    color: Colors.textPrimary,
   },
   dayRow: {
     flexDirection: "row",
@@ -314,10 +335,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: Radius.sm,
-    backgroundColor: Colors.background,
+    backgroundColor: Colors.surfaceAlt,
   },
   dayChipActive: {
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.accent,
   },
   dayChipText: {
     ...Typography.caption,

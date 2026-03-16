@@ -1,7 +1,8 @@
+import Constants from "expo-constants";
 import * as Google from "expo-auth-session/providers/google";
-import { Link, useRouter } from "expo-router";
+import { Link } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Alert,
   KeyboardAvoidingView,
@@ -13,9 +14,9 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { InputField } from "@/src/components/forms/InputField";
-import { PrimaryCTA } from "@/src/components/ui/PrimaryCTA";
-import { Colors, Radius, Shadows, Spacing, Typography } from "@/src/features/shared/theme";
+import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
+import { InputField, GradientButton } from "@/src/components";
+import { Colors, Radius, Spacing, Typography } from "@/src/features/shared/theme";
 import { useAuth } from "@/src/features/auth/auth-context";
 import type { AppRole } from "@/src/features/users/user.types";
 import {
@@ -26,7 +27,6 @@ import {
 
 WebBrowser.maybeCompleteAuthSession();
 
-// ─── Role definitions ────────────────────────────────────────────────────────
 interface RoleOption {
   id: AppRole;
   label: string;
@@ -44,8 +44,8 @@ const ROLES: RoleOption[] = [
     icon: "🚗",
     headline: "Find & book EV chargers",
     bullets: ["Discover nearby chargers", "Book sessions in advance", "Track trips & energy use"],
-    accentColor: Colors.primary,
-    accentBg: Colors.primaryLight,
+    accentColor: Colors.accent,
+    accentBg: Colors.accentLight,
   },
   {
     id: "host",
@@ -67,9 +67,7 @@ const ROLES: RoleOption[] = [
   },
 ];
 
-// ─── Screen ──────────────────────────────────────────────────────────────────
 export default function SignUpScreen() {
-  const router = useRouter();
   const { signup, loginWithGoogle } = useAuth();
 
   const [role, setRole] = useState<AppRole>("driver");
@@ -81,18 +79,30 @@ export default function SignUpScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
 
-  // Field errors
   const [nameError, setNameError] = useState("");
   const [emailError, setEmailError] = useState("");
   const [passwordError, setPasswordError] = useState("");
   const [confirmError, setConfirmError] = useState("");
 
-  // ─── Google Auth ──────────────────────────────────────────────────────────
+  const isExpoGo = Constants.appOwnership === "expo";
+
   const [googleRequest, googleResponse, googlePromptAsync] = Google.useAuthRequest({
     webClientId: GOOGLE_WEB_CLIENT_ID,
     iosClientId: GOOGLE_IOS_CLIENT_ID,
     androidClientId: GOOGLE_ANDROID_CLIENT_ID,
   });
+
+  const handleGoogleCredential = useCallback(async (idToken: string) => {
+    try {
+      setGoogleLoading(true);
+      await loginWithGoogle(idToken);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Google sign-in failed.";
+      Alert.alert("Google Sign-In Failed", msg);
+    } finally {
+      setGoogleLoading(false);
+    }
+  }, [loginWithGoogle]);
 
   useEffect(() => {
     if (googleResponse?.type === "success") {
@@ -101,22 +111,8 @@ export default function SignUpScreen() {
         handleGoogleCredential(idToken);
       }
     }
-  }, [googleResponse]);
+  }, [googleResponse, handleGoogleCredential]);
 
-  async function handleGoogleCredential(idToken: string) {
-    try {
-      setGoogleLoading(true);
-      await loginWithGoogle(idToken);
-      router.replace("/(app)/(tabs)/dashboard" as any);
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : "Google sign-in failed.";
-      Alert.alert("Google Sign-In Failed", msg);
-    } finally {
-      setGoogleLoading(false);
-    }
-  }
-
-  // ─── Validation ───────────────────────────────────────────────────────────
   function validate() {
     let valid = true;
     setNameError("");
@@ -162,7 +158,6 @@ export default function SignUpScreen() {
     try {
       setSubmitting(true);
       await signup({ email: email.trim(), password, displayName: displayName.trim(), role });
-      router.replace("/(app)/(tabs)/dashboard" as any);
     } catch (error) {
       const msg = error instanceof Error ? error.message : "Unable to create account.";
       Alert.alert("Sign Up Failed", msg);
@@ -184,14 +179,12 @@ export default function SignUpScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {/* ── Header ───────────────────────────────────────────────── */}
-          <View style={styles.header}>
+          <Animated.View entering={FadeIn.duration(350)} style={styles.header}>
             <Text style={styles.heading}>Create Account</Text>
             <Text style={styles.subheading}>Choose your role to get started</Text>
-          </View>
+          </Animated.View>
 
-          {/* ── Role Selection ────────────────────────────────────────── */}
-          <View style={styles.section}>
+          <Animated.View entering={FadeInDown.delay(100).duration(350)} style={styles.section}>
             <Text style={styles.sectionLabel}>I am a…</Text>
             <View style={styles.roleGrid}>
               {ROLES.map((r) => {
@@ -206,7 +199,6 @@ export default function SignUpScreen() {
                       isActive && { borderColor: r.accentColor, backgroundColor: r.accentBg },
                     ]}
                   >
-                    {/* Selected checkmark */}
                     {isActive && (
                       <View style={[styles.roleCheck, { backgroundColor: r.accentColor }]}>
                         <Text style={styles.roleCheckMark}>✓</Text>
@@ -232,30 +224,29 @@ export default function SignUpScreen() {
               })}
             </View>
 
-            {/* Selected role summary */}
             <View style={[styles.roleBanner, { backgroundColor: selectedRole.accentBg, borderColor: selectedRole.accentColor }]}>
               <Text style={[styles.roleBannerText, { color: selectedRole.accentColor }]}>
                 {selectedRole.icon} Signing up as a <Text style={{ fontWeight: "800" }}>{selectedRole.label}</Text> — {selectedRole.headline.toLowerCase()}
               </Text>
             </View>
-          </View>
+          </Animated.View>
 
-          {/* ── Account Details Card ──────────────────────────────────── */}
-          <View style={styles.card}>
+          <Animated.View entering={FadeInDown.delay(200).duration(350)} style={styles.card}>
             <Text style={styles.cardTitle}>Account Details</Text>
 
-            {/* Google Sign Up */}
             <TouchableOpacity
-              style={[styles.googleBtn, (googleLoading || !googleRequest) && styles.disabledBtn]}
+              style={[styles.googleBtn, (googleLoading || !googleRequest || isExpoGo) && styles.disabledBtn]}
               onPress={() => googlePromptAsync()}
-              disabled={googleLoading || !googleRequest}
+              disabled={googleLoading || !googleRequest || isExpoGo}
               activeOpacity={0.8}
             >
               <View style={styles.googleG}>
                 <Text style={styles.googleGText}>G</Text>
               </View>
               <Text style={styles.googleBtnText}>
-                {googleLoading
+                {isExpoGo
+                  ? "Google sign-in unavailable in Expo Go"
+                  : googleLoading
                   ? "Creating account…"
                   : `Sign up as ${selectedRole.label} with Google`}
               </Text>
@@ -316,7 +307,7 @@ export default function SignUpScreen() {
               leftIcon={<Text style={styles.inputIcon}>🔒</Text>}
             />
 
-            <PrimaryCTA
+            <GradientButton
               label={`Create ${selectedRole.label} Account`}
               onPress={handleSignup}
               loading={submitting}
@@ -329,7 +320,7 @@ export default function SignUpScreen() {
                 Sign in
               </Link>
             </Text>
-          </View>
+          </Animated.View>
 
           <Text style={styles.termsText}>
             By creating an account, you agree to the VehicleGrid Terms of Service and Privacy Policy.
@@ -350,7 +341,6 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.xxl,
     paddingBottom: 48,
   },
-
   header: {
     marginBottom: Spacing.xxl,
   },
@@ -361,8 +351,6 @@ const styles = StyleSheet.create({
   subheading: {
     ...Typography.body,
   },
-
-  // ── Role selection
   section: {
     marginBottom: Spacing.xxl,
   },
@@ -371,6 +359,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: Colors.textPrimary,
     marginBottom: Spacing.md,
+    fontFamily: "DMSans_700Bold",
   },
   roleGrid: {
     flexDirection: "row",
@@ -385,7 +374,6 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: Colors.border,
     position: "relative",
-    ...Shadows.card,
   },
   roleCheck: {
     position: "absolute",
@@ -411,6 +399,7 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: Colors.textPrimary,
     marginBottom: 2,
+    fontFamily: "Syne_800ExtraBold",
   },
   roleCardHeadline: {
     fontSize: 10,
@@ -435,7 +424,6 @@ const styles = StyleSheet.create({
     lineHeight: 14,
     flex: 1,
   },
-
   roleBanner: {
     borderRadius: Radius.md,
     borderWidth: 1,
@@ -445,22 +433,20 @@ const styles = StyleSheet.create({
     fontSize: 13,
     textAlign: "center",
     lineHeight: 18,
+    fontFamily: "DMSans_500Medium",
   },
-
-  // ── Account details card
   card: {
     backgroundColor: Colors.surface,
     borderRadius: Radius.card,
     padding: Spacing.xl,
-    ...Shadows.card,
+    borderWidth: 1,
+    borderColor: Colors.glassBorder,
   },
   cardTitle: {
     ...Typography.cardTitle,
     fontSize: 16,
     marginBottom: Spacing.lg,
   },
-
-  // Google
   googleBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -469,9 +455,8 @@ const styles = StyleSheet.create({
     borderRadius: Radius.lg,
     borderWidth: 1.5,
     borderColor: Colors.border,
-    backgroundColor: Colors.surface,
+    backgroundColor: Colors.surfaceAlt,
     gap: Spacing.md,
-    ...Shadows.card,
   },
   disabledBtn: {
     opacity: 0.45,
@@ -485,7 +470,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   googleGText: {
-    color: Colors.textInverse,
+    color: "#FFFFFF",
     fontSize: 14,
     fontWeight: "800",
   },
@@ -494,8 +479,8 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: Colors.textPrimary,
     flexShrink: 1,
+    fontFamily: "DMSans_600SemiBold",
   },
-
   divider: {
     flexDirection: "row",
     alignItems: "center",
@@ -512,16 +497,13 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     fontWeight: "500",
   },
-
   inputIcon: {
     fontSize: 14,
     color: Colors.textMuted,
   },
-
   ctaBtn: {
     marginTop: Spacing.sm,
   },
-
   footerText: {
     textAlign: "center",
     fontSize: 13,
@@ -529,10 +511,9 @@ const styles = StyleSheet.create({
     marginTop: Spacing.xl,
   },
   footerLink: {
-    color: Colors.primary,
+    color: Colors.accent,
     fontWeight: "700",
   },
-
   termsText: {
     textAlign: "center",
     fontSize: 10,

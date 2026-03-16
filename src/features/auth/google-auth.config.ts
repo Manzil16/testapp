@@ -2,10 +2,10 @@
  * Google OAuth Client IDs
  *
  * HOW TO GET THESE:
- * 1. Open Firebase Console → vehiclegrid-app project
- * 2. Go to Authentication → Sign-in method → Google → Enable it
- * 3. Copy the "Web client ID" shown there → paste into GOOGLE_WEB_CLIENT_ID
- * 4. For iOS: go to Google Cloud Console → Credentials → find the iOS OAuth client → copy ID
+ * 1. Go to Supabase Dashboard → Authentication → Providers → Google → Enable it
+ * 2. Set up OAuth in Google Cloud Console → Credentials
+ * 3. Copy the Web client ID → paste into GOOGLE_WEB_CLIENT_ID
+ * 4. For iOS: find the iOS OAuth client in Google Cloud Console → copy ID
  * 5. For Android: same but find the Android OAuth client
  *
  * For local development with Expo Go, only GOOGLE_WEB_CLIENT_ID is required.

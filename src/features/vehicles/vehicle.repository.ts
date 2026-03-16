@@ -1,174 +1,61 @@
-import {
-  collection,
-  deleteDoc,
-  doc,
-  getDocs,
-  onSnapshot,
-  orderBy,
-  query,
-  setDoc,
-  where,
-  type Timestamp,
-} from "firebase/firestore";
-import { db } from "../../firebaseConfig";
-import { buildServerTimestampFields, timestampToIso } from "../shared/firestore-utils";
+import { supabase } from "../../lib/supabase";
 import type { UpsertVehicleInput, Vehicle } from "./vehicle.types";
-import {
-  DEV_PREVIEW_MODE,
-  DEV_PREVIEW_STATE,
-  isFirebasePermissionError,
-  logDevPreviewFallback,
-} from "../shared/dev-preview";
 
-interface VehicleDoc {
-  userId: string;
-  name: string;
-  make: string;
-  model: string;
-  year: number;
-  batteryCapacityKWh: number;
-  maxRangeKm: number;
-  efficiencyKWhPer100Km: number;
-  defaultReservePercent: number;
-  createdAt?: Timestamp;
-  updatedAt?: Timestamp;
-}
-
-function mapVehicle(id: string, docData: VehicleDoc): Vehicle {
+function mapRow(row: Record<string, unknown>): Vehicle {
   return {
-    id,
-    userId: docData.userId,
-    name: docData.name,
-    make: docData.make,
-    model: docData.model,
-    year: docData.year,
-    batteryCapacityKWh: docData.batteryCapacityKWh,
-    maxRangeKm: docData.maxRangeKm,
-    efficiencyKWhPer100Km: docData.efficiencyKWhPer100Km,
-    defaultReservePercent: docData.defaultReservePercent,
-    createdAtIso: timestampToIso(docData.createdAt),
-    updatedAtIso: timestampToIso(docData.updatedAt),
+    id: row.id as string,
+    userId: row.user_id as string,
+    name: row.name as string,
+    make: row.make as string,
+    model: row.model as string,
+    year: row.year as number,
+    batteryCapacityKWh: Number(row.battery_capacity_kwh),
+    maxRangeKm: Number(row.max_range_km),
+    efficiencyKWhPer100Km: Number(row.efficiency_kwh_per_100km),
+    defaultReservePercent: row.default_reserve_percent as number,
+    createdAtIso: row.created_at as string,
+    updatedAtIso: row.updated_at as string,
   };
 }
 
-function getDevVehiclesByUser(userId: string): Vehicle[] {
-  return DEV_PREVIEW_STATE.vehicles.filter((vehicle) => vehicle.userId === userId);
-}
-
-function errorMessage(error: unknown, fallback: string): string {
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
-  return fallback;
-}
-
 export async function upsertVehicle(
-  vehicleId: string,
+  vehicleId: string | null,
   userId: string,
   payload: UpsertVehicleInput
-): Promise<void> {
-  const ref = doc(db, "vehicles", vehicleId);
+): Promise<string> {
+  const row = {
+    ...(vehicleId ? { id: vehicleId } : {}),
+    user_id: userId,
+    name: payload.name,
+    make: payload.make,
+    model: payload.model,
+    year: payload.year,
+    battery_capacity_kwh: payload.batteryCapacityKWh,
+    max_range_km: payload.maxRangeKm,
+    efficiency_kwh_per_100km: payload.efficiencyKWhPer100Km,
+    default_reserve_percent: payload.defaultReservePercent,
+  };
 
-  try {
-    await setDoc(
-      ref,
-      {
-        userId,
-        ...payload,
-        ...buildServerTimestampFields(true),
-      },
-      { merge: true }
-    );
-  } catch (error) {
-    if (!DEV_PREVIEW_MODE || !isFirebasePermissionError(error)) {
-      throw error;
-    }
-
-    logDevPreviewFallback("vehicles.upsertVehicle", error);
-    const existingIndex = DEV_PREVIEW_STATE.vehicles.findIndex((vehicle) => vehicle.id === vehicleId);
-    const next: Vehicle = {
-      id: vehicleId,
-      userId,
-      ...payload,
-      createdAtIso: DEV_PREVIEW_STATE.vehicles[existingIndex]?.createdAtIso || new Date().toISOString(),
-      updatedAtIso: new Date().toISOString(),
-    };
-
-    if (existingIndex >= 0) {
-      DEV_PREVIEW_STATE.vehicles[existingIndex] = next;
-    } else {
-      DEV_PREVIEW_STATE.vehicles.push(next);
-    }
-  }
+  const { data, error } = await supabase
+    .from("vehicles")
+    .upsert(row)
+    .select("id")
+    .single();
+  if (error) throw error;
+  return (data as { id: string }).id;
 }
 
 export async function listVehiclesByUser(userId: string): Promise<Vehicle[]> {
-  const q = query(
-    collection(db, "vehicles"),
-    where("userId", "==", userId),
-    orderBy("updatedAt", "desc")
-  );
-
-  try {
-    const snapshot = await getDocs(q);
-
-    return snapshot.docs.map((vehicle) =>
-      mapVehicle(vehicle.id, vehicle.data() as VehicleDoc)
-    );
-  } catch (error) {
-    if (!DEV_PREVIEW_MODE || !isFirebasePermissionError(error)) {
-      throw error;
-    }
-
-    logDevPreviewFallback("vehicles.listVehiclesByUser", error);
-    return getDevVehiclesByUser(userId);
-  }
-}
-
-export function listenToVehiclesByUser(
-  userId: string,
-  callback: (vehicles: Vehicle[]) => void,
-  onError?: (message: string) => void
-): () => void {
-  const q = query(
-    collection(db, "vehicles"),
-    where("userId", "==", userId),
-    orderBy("updatedAt", "desc")
-  );
-
-  const unsubscribe = onSnapshot(
-    q,
-    (snapshot) => {
-      callback(
-        snapshot.docs.map((vehicle) => mapVehicle(vehicle.id, vehicle.data() as VehicleDoc))
-      );
-    },
-    (error) => {
-      if (!DEV_PREVIEW_MODE || !isFirebasePermissionError(error)) {
-        onError?.(errorMessage(error, "Unable to listen for vehicles."));
-        return;
-      }
-
-      logDevPreviewFallback("vehicles.listenToVehiclesByUser", error);
-      callback(getDevVehiclesByUser(userId));
-      unsubscribe();
-    }
-  );
-
-  return unsubscribe;
+  const { data, error } = await supabase
+    .from("vehicles")
+    .select("*")
+    .eq("user_id", userId)
+    .order("updated_at", { ascending: false });
+  if (error) throw error;
+  return (data as Record<string, unknown>[]).map(mapRow);
 }
 
 export async function deleteVehicle(vehicleId: string): Promise<void> {
-  try {
-    await deleteDoc(doc(db, "vehicles", vehicleId));
-  } catch (error) {
-    if (!DEV_PREVIEW_MODE || !isFirebasePermissionError(error)) {
-      throw error;
-    }
-
-    logDevPreviewFallback("vehicles.deleteVehicle", error);
-    DEV_PREVIEW_STATE.vehicles = DEV_PREVIEW_STATE.vehicles.filter(
-      (vehicle) => vehicle.id !== vehicleId
-    );
-  }
+  const { error } = await supabase.from("vehicles").delete().eq("id", vehicleId);
+  if (error) throw error;
 }

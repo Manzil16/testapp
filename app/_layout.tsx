@@ -1,19 +1,35 @@
+import "react-native-get-random-values";
 import * as SplashScreen from "expo-splash-screen";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text } from "react-native";
 import Animated, {
-  FadeOut,
-  SlideOutUp,
   useAnimatedStyle,
   useSharedValue,
   withDelay,
   withTiming,
 } from "react-native-reanimated";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { QueryClientProvider } from "@tanstack/react-query";
+import {
+  useFonts,
+  Syne_400Regular,
+  Syne_500Medium,
+  Syne_600SemiBold,
+  Syne_700Bold,
+  Syne_800ExtraBold,
+} from "@expo-google-fonts/syne";
+import {
+  DMSans_400Regular,
+  DMSans_500Medium,
+  DMSans_600SemiBold,
+  DMSans_700Bold,
+} from "@expo-google-fonts/dm-sans";
 import { AuthProvider, useAuth } from "../src/features/auth/auth-context";
+import { queryClient } from "../src/lib/query-client";
 import { Colors } from "@/src/features/shared/theme";
+import { NetworkBanner } from "@/src/components";
 import type { AppRole } from "@/src/features/users";
 
 SplashScreen.preventAutoHideAsync();
@@ -43,7 +59,7 @@ function AnimatedSplashOverlay({ onFinished }: { onFinished: () => void }) {
     }, 750);
 
     return () => clearTimeout(timer);
-  }, []);
+  }, [onFinished, opacity, translateY]);
 
   const animatedStyle = useAnimatedStyle(() => ({
     opacity: opacity.value,
@@ -61,7 +77,7 @@ function AnimatedSplashOverlay({ onFinished }: { onFinished: () => void }) {
 
 const splashStyles = StyleSheet.create({
   container: {
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.background,
     alignItems: "center",
     justifyContent: "center",
     zIndex: 999,
@@ -73,27 +89,28 @@ const splashStyles = StyleSheet.create({
   title: {
     fontSize: 32,
     fontWeight: "800",
-    color: Colors.textInverse,
+    color: Colors.accent,
     letterSpacing: 1,
+    fontFamily: "Syne_800ExtraBold",
   },
   tagline: {
     fontSize: 15,
     fontWeight: "500",
-    color: "rgba(255,255,255,0.8)",
+    color: Colors.textSecondary,
     marginTop: 8,
+    fontFamily: "DMSans_500Medium",
   },
 });
 
 function AppRouteGate() {
   const router = useRouter();
   const segments = useSegments() as string[];
-  const { isAuthenticated, profile, isBootstrapping, isProfileLoading } = useAuth();
+  const { isAuthenticated, profile, isBootstrapping, isProfileLoading, needsRoleSelection } = useAuth();
 
   const authLoading = isBootstrapping || isProfileLoading;
   const [splashHidden, setSplashHidden] = useState(false);
   const [overlayVisible, setOverlayVisible] = useState(true);
 
-  // Hide native splash once auth has resolved
   useEffect(() => {
     if (!authLoading && !splashHidden) {
       SplashScreen.hideAsync();
@@ -106,9 +123,7 @@ function AppRouteGate() {
   }, []);
 
   useEffect(() => {
-    if (isBootstrapping || isProfileLoading) {
-      return;
-    }
+    if (isBootstrapping || isProfileLoading) return;
 
     const inAuthGroup = segments[0] === "(auth)";
     const inAppGroup = segments[0] === "(app)";
@@ -122,9 +137,15 @@ function AppRouteGate() {
       return;
     }
 
-    if (!profile) {
+    // Authenticated but no profile — send to role selection
+    if (needsRoleSelection) {
+      if (segments[1] !== "select-role") {
+        router.replace("/(auth)/select-role" as any);
+      }
       return;
     }
+
+    if (!profile) return;
 
     const defaultAppRoute = tabByRole[profile.role] || tabByRole.driver;
 
@@ -134,9 +155,7 @@ function AppRouteGate() {
     }
 
     if (area === "(tabs)") {
-      if (!activeTab) {
-        return; // Tab segment hasn't resolved yet — wait for next update.
-      }
+      if (!activeTab) return;
       const allowedTabs = allowedTabsByRole[profile.role] || allowedTabsByRole.driver;
       if (!allowedTabs.has(activeTab)) {
         router.replace(defaultAppRoute as any);
@@ -148,23 +167,28 @@ function AppRouteGate() {
       router.replace(defaultAppRoute as any);
       return;
     }
-
     if (area === "host" && profile.role !== "host") {
       router.replace(defaultAppRoute as any);
       return;
     }
-
     if (area === "driver" && profile.role !== "driver") {
       router.replace(defaultAppRoute as any);
     }
-  }, [isAuthenticated, isBootstrapping, isProfileLoading, profile, router, segments]);
+  }, [isAuthenticated, isBootstrapping, isProfileLoading, needsRoleSelection, profile, router, segments]);
 
   return (
     <>
-      <Stack screenOptions={{ headerShown: false }}>
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: Colors.background },
+          animation: "fade",
+        }}
+      >
         <Stack.Screen name="(auth)" />
         <Stack.Screen name="(app)" />
       </Stack>
+      <NetworkBanner />
       {overlayVisible && splashHidden ? (
         <AnimatedSplashOverlay onFinished={handleOverlayFinished} />
       ) : null}
@@ -173,11 +197,27 @@ function AppRouteGate() {
 }
 
 export default function RootLayout() {
+  const [fontsLoaded] = useFonts({
+    Syne_400Regular,
+    Syne_500Medium,
+    Syne_600SemiBold,
+    Syne_700Bold,
+    Syne_800ExtraBold,
+    DMSans_400Regular,
+    DMSans_500Medium,
+    DMSans_600SemiBold,
+    DMSans_700Bold,
+  });
+
+  if (!fontsLoaded) return null;
+
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <AuthProvider>
-        <AppRouteGate />
-      </AuthProvider>
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: Colors.background }}>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <AppRouteGate />
+        </AuthProvider>
+      </QueryClientProvider>
       <StatusBar style="light" />
     </GestureHandlerRootView>
   );

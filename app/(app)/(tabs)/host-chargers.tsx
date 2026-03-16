@@ -3,15 +3,13 @@ import { useRouter } from "expo-router";
 import { FlatList, RefreshControl, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
+import Animated, { FadeIn } from "react-native-reanimated";
 import {
   AnimatedListItem,
   ChargerCardSkeleton,
   EmptyStateCard,
-  InfoPill,
   PressableScale,
   ScreenContainer,
-  SecondaryButton,
   Typography,
   Colors,
   Radius,
@@ -22,20 +20,19 @@ import { useAuth } from "@/src/features/auth/auth-context";
 import { useHostChargers, useEntranceAnimation, useRefresh } from "@/src/hooks";
 
 const STATUS_CONFIG: Record<string, { color: string; bg: string; label: string; icon: string }> = {
-  verified: { color: Colors.success, bg: Colors.successLight, label: "Verified", icon: "checkmark-circle" },
-  pending_verification: { color: Colors.warning, bg: Colors.warningLight, label: "Pending", icon: "time" },
+  approved: { color: Colors.success, bg: Colors.successLight, label: "Approved", icon: "checkmark-circle" },
+  pending: { color: Colors.warning, bg: Colors.warningLight, label: "Pending", icon: "time" },
   rejected: { color: Colors.error, bg: Colors.errorLight, label: "Rejected", icon: "close-circle" },
-  suspended: { color: Colors.error, bg: Colors.errorLight, label: "Suspended", icon: "alert-circle" },
 };
 
 export default function HostChargersTabScreen() {
   const router = useRouter();
-  const { authUser, sessionUser } = useAuth();
+  const { user } = useAuth();
   const entranceStyle = useEntranceAnimation();
 
   const userId = useMemo(
-    () => authUser?.uid || sessionUser?.uid,
-    [authUser?.uid, sessionUser?.uid]
+    () => user?.id,
+    [user?.id]
   );
 
   const { data, isLoading, error, refresh, actions } = useHostChargers(userId);
@@ -57,7 +54,7 @@ export default function HostChargersTabScreen() {
               onPress={() => router.push("/(app)/host/charger-form" as any)}
               style={styles.addButton}
             >
-              <Ionicons name="add" size={20} color="#FFF" />
+              <Ionicons name="add" size={20} color={Colors.textInverse} />
               <Text style={styles.addButtonText}>Add</Text>
             </PressableScale>
           </Animated.View>
@@ -91,8 +88,8 @@ export default function HostChargersTabScreen() {
                     ? verificationReq.note
                     : null;
 
-                const statusCfg = STATUS_CONFIG[item.status] || STATUS_CONFIG.pending_verification;
-                const canRequestReview = item.status === "suspended" || item.status === "rejected";
+                const statusCfg = STATUS_CONFIG[item.status] || STATUS_CONFIG.pending;
+                const canRequestReview = item.status === "rejected";
 
                 return (
                   <AnimatedListItem index={index}>
@@ -228,7 +225,7 @@ const styles = StyleSheet.create({
   addButtonText: {
     fontSize: 14,
     fontWeight: "600",
-    color: "#FFF",
+    color: Colors.textInverse,
   },
   skeletons: {
     gap: Spacing.sm,

@@ -1,77 +1,38 @@
-import { useCallback, useEffect, useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   listVehiclesByUser,
-  listenToVehiclesByUser,
   upsertVehicle,
-  type UpsertVehicleInput,
-  type Vehicle,
-} from "@/src/features/vehicles";
+} from "../features/vehicles/vehicle.repository";
+import type { UpsertVehicleInput } from "../features/vehicles/vehicle.types";
 
 export function useVehicleProfile(userId?: string) {
-  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
-  useEffect(() => {
-    if (!userId) {
-      setVehicles([]);
-      setError(null);
-      setIsLoading(false);
-      return;
-    }
+  const vehiclesQuery = useQuery({
+    queryKey: ["vehicles", userId],
+    queryFn: () => listVehiclesByUser(userId!),
+    enabled: Boolean(userId),
+  });
 
-    setIsLoading(true);
-    setError(null);
-    const unsubscribe = listenToVehiclesByUser(
-      userId,
-      (items) => {
-        setVehicles(items);
-        setIsLoading(false);
-      },
-      (message) => {
-        setError(message);
-        setIsLoading(false);
-      }
-    );
+  const vehicles = vehiclesQuery.data ?? [];
+  const primaryVehicle = vehicles[0] ?? null;
 
-    return unsubscribe;
-  }, [userId]);
-
-  const refresh = useCallback(async () => {
-    if (!userId) {
-      return;
-    }
-
-    try {
-      setError(null);
-      const result = await listVehiclesByUser(userId);
-      setVehicles(result);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to refresh vehicle profile.");
-    }
-  }, [userId]);
-
-  const saveVehicle = useCallback(
-    async (payload: UpsertVehicleInput, vehicleId?: string) => {
-      if (!userId) {
-        throw new Error("You must be signed in.");
-      }
-
-      const nextId = vehicleId || vehicles[0]?.id || `vehicle-${userId}`;
-      await upsertVehicle(nextId, userId, payload);
-      return nextId;
+  const saveMutation = useMutation({
+    mutationFn: (input: { payload: UpsertVehicleInput; vehicleId?: string }) =>
+      upsertVehicle(input.vehicleId || null, userId!, input.payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["vehicles", userId] });
     },
-    [userId, vehicles]
-  );
+  });
 
   return {
-    data: {
-      vehicles,
-      primaryVehicle: vehicles[0] || null,
+    data: { vehicles, primaryVehicle },
+    isLoading: vehiclesQuery.isLoading,
+    error: vehiclesQuery.error?.message || null,
+    refresh: async () => {
+      await vehiclesQuery.refetch();
     },
-    isLoading,
-    error,
-    refresh,
-    saveVehicle,
+    saveVehicle: (payload: UpsertVehicleInput, vehicleId?: string) =>
+      saveMutation.mutateAsync({ payload, vehicleId }),
   };
 }

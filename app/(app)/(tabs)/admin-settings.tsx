@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Alert, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Platform, StyleSheet, Text, ToastAndroid } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import {
   Avatar,
@@ -20,6 +21,7 @@ import { useAuth } from "@/src/features/auth/auth-context";
 import { useEntranceAnimation } from "@/src/hooks";
 
 export default function AdminSettingsTabScreen() {
+  const router = useRouter();
   const { profile, updateProfileDetails, logout } = useAuth();
   const entranceStyle = useEntranceAnimation();
 
@@ -60,9 +62,14 @@ export default function AdminSettingsTabScreen() {
     try {
       setSigningOut(true);
       await logout();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Unable to sign out.";
-      Alert.alert("Sign out failed", message);
+      router.replace("/(auth)/sign-in" as any);
+    } catch {
+      const message = "Sign out failed, please try again";
+      if (Platform.OS === "android") {
+        ToastAndroid.show(message, ToastAndroid.SHORT);
+      } else {
+        Alert.alert("Error", message);
+      }
     } finally {
       setSigningOut(false);
     }

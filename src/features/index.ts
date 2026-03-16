@@ -1,5 +1,5 @@
 export * from "./shared/theme";
-export * from "./shared/firestore-utils";
+
 export * from "./auth";
 export * from "./users";
 export * from "./vehicles";

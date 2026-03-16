@@ -1,17 +1,22 @@
 import Constants from "expo-constants";
-import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Alert, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ActivityIndicator, Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
+import { useLocalSearchParams } from "expo-router";
+import { useFocusEffect } from "@react-navigation/native";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import {
   Avatar,
   EmptyStateCard,
+  GradientButton,
   InfoPill,
   InputField,
-  PrimaryCTA,
+  PremiumCard,
   PressableScale,
   ScreenContainer,
+  SectionTitle,
   Typography,
   Colors,
   Radius,
@@ -19,19 +24,28 @@ import {
   Spacing,
 } from "@/src/components";
 import { useAuth } from "@/src/features/auth/auth-context";
-import { useAvatarUpload, useDriverDashboard, useEntranceAnimation } from "@/src/hooks";
+import { useAvatarUpload, useBadgeCounts, useDriverDashboard, useEntranceAnimation, useSettings } from "@/src/hooks";
 import type { AppRole } from "@/src/features/users";
+import type { CurrencyCode } from "@/src/hooks/useSettings";
 
 const roleOptions: AppRole[] = ["driver", "host", "admin"];
+const CURRENCY_OPTIONS: CurrencyCode[] = ["AUD", "USD", "EUR", "GBP", "NZD"];
+
+const ACHIEVEMENTS = [
+  { id: "first_charge", icon: "⚡", label: "First Charge", desc: "Completed your first session" },
+  { id: "100kwh", icon: "🔋", label: "100 kWh Club", desc: "Charged 100+ kWh total" },
+  { id: "5_trips", icon: "🗺️", label: "Road Warrior", desc: "Planned 5+ trips" },
+  { id: "reviewer", icon: "⭐", label: "Top Reviewer", desc: "Left 3+ reviews" },
+];
 
 export default function ProfileScreen() {
-  const { authUser, sessionUser, profile, updateProfileDetails, logout } = useAuth();
+  const { focusField } = useLocalSearchParams<{ focusField?: string }>();
+  const { user, profile, updateProfileDetails } = useAuth();
   const entranceStyle = useEntranceAnimation();
+  const settings = useSettings();
+  const { markProfileSeen } = useBadgeCounts();
 
-  const userId = useMemo(
-    () => authUser?.uid || sessionUser?.uid,
-    [authUser?.uid, sessionUser?.uid]
-  );
+  const userId = useMemo(() => user?.id, [user?.id]);
 
   const { pickAndUpload, uploading, progress } = useAvatarUpload(userId);
   const { data } = useDriverDashboard(userId);
@@ -41,15 +55,24 @@ export default function ProfileScreen() {
   const [reservePercent, setReservePercent] = useState("12");
   const [role, setRole] = useState<AppRole>("driver");
   const [saving, setSaving] = useState(false);
-  const [signingOut, setSigningOut] = useState(false);
 
   const [devTapCount, setDevTapCount] = useState(0);
   const [devToggleUnlocked, setDevToggleUnlocked] = useState(false);
 
-  const version = useMemo(
-    () => Constants.expoConfig?.version || "1.0.0",
-    []
-  );
+  // Password change state
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+
+  // Delete account state
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+
+  // Currency picker
+  const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
+  const phoneInputRef = useRef<TextInput>(null);
+
+  const version = useMemo(() => Constants.expoConfig?.version || "1.0.0", []);
 
   useEffect(() => {
     if (!profile) return;
@@ -58,6 +81,21 @@ export default function ProfileScreen() {
     setRole(profile.role);
     setReservePercent(String(profile.preferredReservePercent ?? 12));
   }, [profile]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void markProfileSeen();
+
+      if (focusField === "phone") {
+        const timer = setTimeout(() => {
+          phoneInputRef.current?.focus();
+        }, 250);
+        return () => clearTimeout(timer);
+      }
+
+      return undefined;
+    }, [focusField, markProfileSeen])
+  );
 
   const handleSave = async () => {
     if (!profile) return;
@@ -81,16 +119,44 @@ export default function ProfileScreen() {
     }
   };
 
-  const handleLogout = async () => {
-    try {
-      setSigningOut(true);
-      await logout();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Unable to sign out.";
-      Alert.alert("Sign out failed", message);
-    } finally {
-      setSigningOut(false);
+  const handleLogout = () => {
+    Alert.alert("Sign Out", "Are you sure you want to sign out?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Sign Out",
+        style: "destructive",
+        onPress: () => settings.signOut(),
+      },
+    ]);
+  };
+
+  const handleDeleteAccount = () => {
+    setDeleteConfirmText("");
+    setShowDeleteModal(true);
+  };
+
+  const confirmDelete = async () => {
+    if (deleteConfirmText !== "DELETE") {
+      Alert.alert("Confirmation Required", 'Please type "DELETE" to confirm.');
+      return;
     }
+    setShowDeleteModal(false);
+    await settings.deleteAccount();
+  };
+
+  const handleChangePassword = async () => {
+    if (newPassword.length < 6) {
+      Alert.alert("Invalid Password", "Password must be at least 6 characters.");
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      Alert.alert("Mismatch", "Passwords do not match.");
+      return;
+    }
+    await settings.changePassword(newPassword);
+    setShowPasswordModal(false);
+    setNewPassword("");
+    setConfirmNewPassword("");
   };
 
   const handleVersionTap = () => {
@@ -122,114 +188,286 @@ export default function ProfileScreen() {
     <SafeAreaView style={styles.safe} edges={["bottom"]}>
       <Animated.View style={[{ flex: 1 }, entranceStyle]}>
         <ScreenContainer>
-          {/* Header section */}
-          <Animated.View entering={FadeIn.duration(350)} style={styles.headerCard}>
-            <PressableScale onPress={pickAndUpload} style={styles.avatarWrap}>
-              <Avatar
-                uri={profile.avatarUrl}
-                name={displayName || profile.displayName}
-                size="xl"
-              />
-              {uploading ? (
-                <View style={styles.uploadOverlay}>
-                  <ActivityIndicator color={Colors.textInverse} />
-                  <Text style={styles.uploadText}>{Math.round(progress * 100)}%</Text>
-                </View>
-              ) : (
-                <View style={styles.cameraBadge}>
-                  <Ionicons name="camera" size={14} color="#FFF" />
-                </View>
-              )}
-            </PressableScale>
-            <Text style={styles.profileName}>{displayName || profile.displayName}</Text>
-            <InfoPill label={profile.role.toUpperCase()} variant="primary" />
+          {/* Header with gradient */}
+          <Animated.View entering={FadeIn.duration(350)}>
+            <LinearGradient
+              colors={Colors.gradientHero as any}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.headerGradient}
+            >
+              <PressableScale onPress={pickAndUpload} style={styles.avatarWrap}>
+                <Avatar
+                  uri={profile.avatarUrl}
+                  name={displayName || profile.displayName}
+                  size="xl"
+                />
+                {uploading ? (
+                  <View style={styles.uploadOverlay}>
+                    <ActivityIndicator color="#FFFFFF" />
+                    <Text style={styles.uploadText}>{Math.round(progress * 100)}%</Text>
+                  </View>
+                ) : (
+                  <View style={styles.cameraBadge}>
+                    <Ionicons name="camera" size={14} color={Colors.textInverse} />
+                  </View>
+                )}
+              </PressableScale>
+              <Text style={styles.profileName}>{displayName || profile.displayName}</Text>
+              <InfoPill label={profile.role.toUpperCase()} variant="primary" />
 
-            {/* Stats row */}
-            <View style={styles.statsRow}>
-              <View style={styles.statItem}>
-                <Text style={styles.statValue}>{data.stats.totalTrips}</Text>
-                <Text style={styles.statLabel}>Trips</Text>
+              {/* Stats row */}
+              <View style={styles.statsRow}>
+                <View style={styles.statItem}>
+                  <Text style={styles.statValue}>{data.stats.totalTrips}</Text>
+                  <Text style={styles.statLabel}>Trips</Text>
+                </View>
+                <View style={styles.statDivider} />
+                <View style={styles.statItem}>
+                  <Text style={styles.statValue}>{data.stats.totalBookings}</Text>
+                  <Text style={styles.statLabel}>Bookings</Text>
+                </View>
+                <View style={styles.statDivider} />
+                <View style={styles.statItem}>
+                  <Text style={styles.statValue}>{data.stats.vehiclesRegistered}</Text>
+                  <Text style={styles.statLabel}>Vehicles</Text>
+                </View>
               </View>
-              <View style={styles.statDivider} />
-              <View style={styles.statItem}>
-                <Text style={styles.statValue}>{data.stats.totalBookings}</Text>
-                <Text style={styles.statLabel}>Bookings</Text>
-              </View>
-              <View style={styles.statDivider} />
-              <View style={styles.statItem}>
-                <Text style={styles.statValue}>{data.stats.vehiclesRegistered}</Text>
-                <Text style={styles.statLabel}>Vehicles</Text>
-              </View>
+            </LinearGradient>
+          </Animated.View>
+
+          {/* Achievements */}
+          <Animated.View entering={FadeInDown.delay(80).duration(350)}>
+            <SectionTitle title="Achievements" subtitle="Milestones on your journey" />
+            <View style={styles.achievementsRow}>
+              {ACHIEVEMENTS.map((a) => (
+                <View key={a.id} style={styles.achievementCard}>
+                  <Text style={styles.achievementIcon}>{a.icon}</Text>
+                  <Text style={styles.achievementLabel}>{a.label}</Text>
+                </View>
+              ))}
             </View>
           </Animated.View>
 
-          {/* Settings Form */}
-          <Animated.View entering={FadeInDown.delay(100).duration(350)} style={styles.formSection}>
-            <Text style={styles.sectionLabel}>Account Details</Text>
+          {/* Account Details */}
+          <Animated.View entering={FadeInDown.delay(150).duration(350)}>
+            <PremiumCard style={styles.formSection}>
+              <Text style={styles.sectionLabel}>Account Details</Text>
 
-            <InputField
-              label="Display Name"
-              value={displayName}
-              onChangeText={setDisplayName}
-              leftIcon={<Ionicons name="person-outline" size={16} color={Colors.textMuted} />}
-            />
-            <InputField
-              label="Phone"
-              value={phone}
-              onChangeText={setPhone}
-              keyboardType="phone-pad"
-              placeholder="+61 ..."
-              leftIcon={<Ionicons name="call-outline" size={16} color={Colors.textMuted} />}
-            />
-
-            {profile.role === "driver" ? (
               <InputField
-                label="Preferred Reserve %"
-                value={reservePercent}
-                onChangeText={setReservePercent}
-                keyboardType="numeric"
-                hint="Used in trip planner battery safety calculations"
-                leftIcon={<Ionicons name="battery-half-outline" size={16} color={Colors.textMuted} />}
+                label="Display Name"
+                value={displayName}
+                onChangeText={setDisplayName}
+                leftIcon={<Ionicons name="person-outline" size={16} color={Colors.textMuted} />}
               />
-            ) : null}
+              <InputField
+                label="Phone"
+                value={phone}
+                onChangeText={setPhone}
+                inputRef={phoneInputRef}
+                keyboardType="phone-pad"
+                placeholder="+61 ..."
+                leftIcon={<Ionicons name="call-outline" size={16} color={Colors.textMuted} />}
+              />
 
-            {devToggleUnlocked ? (
-              <View style={styles.devRoleWrap}>
-                <Text style={styles.devLabel}>Role (Dev Toggle)</Text>
-                <View style={styles.roleRow}>
-                  {roleOptions.map((option) => {
-                    const selected = option === role;
-                    return (
-                      <TouchableOpacity
-                        key={option}
-                        style={[styles.roleChip, selected && styles.roleChipActive]}
-                        onPress={() => setRole(option)}
-                      >
-                        <Text style={[styles.roleChipLabel, selected && styles.roleChipLabelActive]}>
-                          {option}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
+              {profile.role === "driver" ? (
+                <InputField
+                  label="Preferred Reserve %"
+                  value={reservePercent}
+                  onChangeText={setReservePercent}
+                  keyboardType="numeric"
+                  hint="Used in trip planner battery safety calculations"
+                  leftIcon={<Ionicons name="battery-half-outline" size={16} color={Colors.textMuted} />}
+                />
+              ) : null}
+
+              {devToggleUnlocked ? (
+                <View style={styles.devRoleWrap}>
+                  <Text style={styles.devLabel}>Role (Dev Toggle)</Text>
+                  <View style={styles.roleRow}>
+                    {roleOptions.map((option) => {
+                      const selected = option === role;
+                      return (
+                        <TouchableOpacity
+                          key={option}
+                          style={[styles.roleChip, selected && styles.roleChipActive]}
+                          onPress={() => setRole(option)}
+                        >
+                          <Text style={[styles.roleChipLabel, selected && styles.roleChipLabelActive]}>
+                            {option}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
                 </View>
-              </View>
-            ) : null}
+              ) : null}
 
-            <PrimaryCTA label="Save Changes" onPress={handleSave} loading={saving} />
+              <GradientButton label="Save Changes" onPress={handleSave} loading={saving} />
+            </PremiumCard>
           </Animated.View>
 
-          {/* Sign Out */}
-          <Animated.View entering={FadeInDown.delay(200).duration(350)}>
-            <PressableScale style={styles.logoutBtn} onPress={handleLogout}>
-              {signingOut ? (
-                <ActivityIndicator size="small" color={Colors.error} />
-              ) : (
-                <>
-                  <Ionicons name="log-out-outline" size={18} color={Colors.error} />
-                  <Text style={styles.logoutText}>Sign Out</Text>
-                </>
+          {/* Settings */}
+          <Animated.View entering={FadeInDown.delay(220).duration(350)}>
+            <PremiumCard style={styles.settingsSection}>
+              <Text style={styles.sectionLabel}>Settings</Text>
+
+              {/* Push Notifications */}
+              <PressableScale onPress={settings.toggleNotifications} style={styles.settingsRow}>
+                <Ionicons name="notifications-outline" size={18} color={Colors.textSecondary} />
+                <Text style={styles.settingsLabel}>Push Notifications</Text>
+                {settings.loadingNotifications ? (
+                  <ActivityIndicator size="small" color={Colors.accent} />
+                ) : (
+                  <Text style={styles.settingsTrailing}>
+                    {settings.notificationsEnabled ? "On" : "Off"}
+                  </Text>
+                )}
+                <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
+              </PressableScale>
+
+              {/* Currency */}
+              <PressableScale
+                onPress={() => setShowCurrencyPicker(!showCurrencyPicker)}
+                style={styles.settingsRow}
+              >
+                <Ionicons name="cash-outline" size={18} color={Colors.textSecondary} />
+                <Text style={styles.settingsLabel}>Currency</Text>
+                <Text style={styles.settingsTrailing}>{settings.currency}</Text>
+                <Ionicons
+                  name={showCurrencyPicker ? "chevron-down" : "chevron-forward"}
+                  size={16}
+                  color={Colors.textMuted}
+                />
+              </PressableScale>
+
+              {showCurrencyPicker && (
+                <View style={styles.currencyRow}>
+                  {CURRENCY_OPTIONS.map((c) => (
+                    <TouchableOpacity
+                      key={c}
+                      style={[
+                        styles.currencyChip,
+                        c === settings.currency && styles.currencyChipActive,
+                      ]}
+                      onPress={() => {
+                        settings.setCurrency(c);
+                        setShowCurrencyPicker(false);
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.currencyChipLabel,
+                          c === settings.currency && styles.currencyChipLabelActive,
+                        ]}
+                      >
+                        {c}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
               )}
+
+              {/* Change Password */}
+              <PressableScale
+                onPress={() => {
+                  setNewPassword("");
+                  setConfirmNewPassword("");
+                  setShowPasswordModal(!showPasswordModal);
+                }}
+                style={styles.settingsRow}
+              >
+                <Ionicons name="lock-closed-outline" size={18} color={Colors.textSecondary} />
+                <Text style={styles.settingsLabel}>Change Password</Text>
+                <Ionicons
+                  name={showPasswordModal ? "chevron-down" : "chevron-forward"}
+                  size={16}
+                  color={Colors.textMuted}
+                />
+              </PressableScale>
+
+              {showPasswordModal && (
+                <View style={styles.inlineForm}>
+                  <TextInput
+                    style={styles.inlineInput}
+                    placeholder="New password"
+                    placeholderTextColor={Colors.textMuted}
+                    secureTextEntry
+                    value={newPassword}
+                    onChangeText={setNewPassword}
+                    autoCapitalize="none"
+                  />
+                  <TextInput
+                    style={styles.inlineInput}
+                    placeholder="Confirm new password"
+                    placeholderTextColor={Colors.textMuted}
+                    secureTextEntry
+                    value={confirmNewPassword}
+                    onChangeText={setConfirmNewPassword}
+                    autoCapitalize="none"
+                  />
+                  <GradientButton
+                    label="Update Password"
+                    onPress={handleChangePassword}
+                    loading={settings.loadingPassword}
+                  />
+                </View>
+              )}
+            </PremiumCard>
+          </Animated.View>
+
+          {/* Account Actions */}
+          <Animated.View entering={FadeInDown.delay(300).duration(350)}>
+            <PressableScale style={styles.logoutBtn} onPress={handleLogout}>
+              <Ionicons name="log-out-outline" size={18} color={Colors.error} />
+              <Text style={styles.logoutText}>Sign Out</Text>
             </PressableScale>
+
+            <PressableScale style={styles.deleteBtn} onPress={handleDeleteAccount}>
+              <Ionicons name="trash-outline" size={18} color={Colors.textMuted} />
+              <Text style={styles.deleteText}>Delete Account</Text>
+            </PressableScale>
+
+            {/* Delete confirmation inline */}
+            {showDeleteModal && (
+              <PremiumCard style={styles.deleteConfirmCard}>
+                <Text style={styles.deleteConfirmTitle}>Confirm Account Deletion</Text>
+                <Text style={styles.deleteConfirmBody}>
+                  This action is permanent. All your data, photos, and account will be removed.
+                  Type DELETE below to confirm.
+                </Text>
+                <TextInput
+                  style={styles.inlineInput}
+                  placeholder='Type "DELETE" to confirm'
+                  placeholderTextColor={Colors.textMuted}
+                  value={deleteConfirmText}
+                  onChangeText={setDeleteConfirmText}
+                  autoCapitalize="characters"
+                />
+                <View style={styles.deleteConfirmActions}>
+                  <TouchableOpacity
+                    style={styles.deleteConfirmCancel}
+                    onPress={() => setShowDeleteModal(false)}
+                  >
+                    <Text style={styles.deleteConfirmCancelText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.deleteConfirmBtn,
+                      deleteConfirmText !== "DELETE" && styles.deleteConfirmBtnDisabled,
+                    ]}
+                    onPress={confirmDelete}
+                    disabled={settings.loadingDelete}
+                  >
+                    {settings.loadingDelete ? (
+                      <ActivityIndicator size="small" color="#FFFFFF" />
+                    ) : (
+                      <Text style={styles.deleteConfirmBtnText}>Delete My Account</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </PremiumCard>
+            )}
           </Animated.View>
 
           <TouchableOpacity style={styles.versionRow} onPress={handleVersionTap} activeOpacity={0.8}>
@@ -252,14 +490,13 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
   },
 
-  // Header card
-  headerCard: {
-    backgroundColor: Colors.surface,
+  // Header gradient
+  headerGradient: {
     borderRadius: Radius.xl,
     padding: Spacing.xl,
     alignItems: "center",
     marginBottom: Spacing.lg,
-    ...Shadows.card,
+    ...Shadows.glow,
   },
   avatarWrap: {
     position: "relative",
@@ -274,7 +511,7 @@ const styles = StyleSheet.create({
   },
   uploadText: {
     ...Typography.caption,
-    color: Colors.textInverse,
+    color: "#FFFFFF",
     marginTop: 2,
   },
   cameraBadge: {
@@ -284,17 +521,18 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.accent,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 2,
-    borderColor: Colors.surface,
+    borderColor: "rgba(0,0,0,0.3)",
   },
   profileName: {
     fontSize: 22,
     fontWeight: "700",
-    color: Colors.textPrimary,
+    color: Colors.textInverse,
     marginBottom: Spacing.xs,
+    fontFamily: "Syne_700Bold",
   },
 
   // Stats
@@ -303,7 +541,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: Spacing.lg,
     width: "100%",
-    backgroundColor: Colors.surfaceAlt,
+    backgroundColor: "rgba(0,0,0,0.2)",
     borderRadius: Radius.lg,
     padding: Spacing.md,
   },
@@ -314,12 +552,13 @@ const styles = StyleSheet.create({
   statValue: {
     fontSize: 20,
     fontWeight: "700",
-    color: Colors.textPrimary,
+    color: "#FFFFFF",
+    fontFamily: "Syne_700Bold",
   },
   statLabel: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "500",
-    color: Colors.textMuted,
+    color: "rgba(255,255,255,0.7)",
     textTransform: "uppercase",
     letterSpacing: 0.3,
     marginTop: 2,
@@ -327,22 +566,46 @@ const styles = StyleSheet.create({
   statDivider: {
     width: 1,
     height: 28,
-    backgroundColor: Colors.border,
+    backgroundColor: "rgba(255,255,255,0.2)",
+  },
+
+  // Achievements
+  achievementsRow: {
+    flexDirection: "row",
+    gap: Spacing.sm,
+    marginBottom: Spacing.lg,
+  },
+  achievementCard: {
+    flex: 1,
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.lg,
+    padding: Spacing.md,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: Colors.glassBorder,
+  },
+  achievementIcon: {
+    fontSize: 24,
+    marginBottom: 4,
+  },
+  achievementLabel: {
+    fontSize: 10,
+    fontWeight: "600",
+    color: Colors.textSecondary,
+    textAlign: "center",
+    fontFamily: "DMSans_600SemiBold",
   },
 
   // Form
   formSection: {
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.xl,
-    padding: Spacing.xl,
     marginBottom: Spacing.lg,
-    ...Shadows.card,
   },
   sectionLabel: {
     fontSize: 16,
     fontWeight: "700",
     color: Colors.textPrimary,
     marginBottom: Spacing.lg,
+    fontFamily: "Syne_700Bold",
   },
   devRoleWrap: {
     marginBottom: Spacing.lg,
@@ -365,8 +628,8 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surfaceAlt,
   },
   roleChipActive: {
-    borderColor: Colors.primary,
-    backgroundColor: Colors.primaryLight,
+    borderColor: Colors.accent,
+    backgroundColor: Colors.accentLight,
   },
   roleChipLabel: {
     ...Typography.caption,
@@ -374,10 +637,79 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   roleChipLabelActive: {
-    color: Colors.primaryDark,
+    color: Colors.accent,
   },
 
-  // Logout
+  // Settings
+  settingsSection: {
+    marginBottom: Spacing.lg,
+  },
+  settingsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.md,
+    paddingVertical: Spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  settingsLabel: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "500",
+    color: Colors.textPrimary,
+    fontFamily: "DMSans_500Medium",
+  },
+  settingsTrailing: {
+    fontSize: 13,
+    color: Colors.textMuted,
+    fontFamily: "DMSans_400Regular",
+  },
+
+  // Currency picker
+  currencyRow: {
+    flexDirection: "row",
+    gap: Spacing.sm,
+    paddingVertical: Spacing.md,
+    flexWrap: "wrap",
+  },
+  currencyChip: {
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: Radius.full,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.lg,
+    backgroundColor: Colors.surfaceAlt,
+  },
+  currencyChipActive: {
+    borderColor: Colors.accent,
+    backgroundColor: Colors.accentLight,
+  },
+  currencyChipLabel: {
+    ...Typography.caption,
+    fontWeight: "600",
+  },
+  currencyChipLabelActive: {
+    color: Colors.accent,
+  },
+
+  // Inline form (password)
+  inlineForm: {
+    paddingVertical: Spacing.md,
+    gap: Spacing.md,
+  },
+  inlineInput: {
+    backgroundColor: Colors.surfaceAlt,
+    borderRadius: Radius.input,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    color: Colors.textPrimary,
+    fontSize: 14,
+    fontFamily: "DMSans_400Regular",
+  },
+
+  // Account Actions
   logoutBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -386,12 +718,79 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.errorLight,
     borderRadius: Radius.xl,
     padding: Spacing.lg,
-    marginBottom: Spacing.md,
+    marginBottom: Spacing.sm,
   },
   logoutText: {
     fontSize: 15,
     fontWeight: "600",
     color: Colors.error,
+    fontFamily: "DMSans_600SemiBold",
+  },
+  deleteBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: Spacing.sm,
+    backgroundColor: Colors.surfaceAlt,
+    borderRadius: Radius.xl,
+    padding: Spacing.lg,
+    marginBottom: Spacing.md,
+  },
+  deleteText: {
+    fontSize: 15,
+    fontWeight: "500",
+    color: Colors.textMuted,
+    fontFamily: "DMSans_500Medium",
+  },
+
+  // Delete confirmation
+  deleteConfirmCard: {
+    marginBottom: Spacing.lg,
+  },
+  deleteConfirmTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: Colors.error,
+    marginBottom: Spacing.sm,
+    fontFamily: "Syne_700Bold",
+  },
+  deleteConfirmBody: {
+    ...Typography.body,
+    marginBottom: Spacing.lg,
+  },
+  deleteConfirmActions: {
+    flexDirection: "row",
+    gap: Spacing.md,
+    marginTop: Spacing.md,
+  },
+  deleteConfirmCancel: {
+    flex: 1,
+    alignItems: "center",
+    paddingVertical: Spacing.md,
+    borderRadius: Radius.lg,
+    backgroundColor: Colors.surfaceAlt,
+  },
+  deleteConfirmCancelText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: Colors.textSecondary,
+    fontFamily: "DMSans_600SemiBold",
+  },
+  deleteConfirmBtn: {
+    flex: 1,
+    alignItems: "center",
+    paddingVertical: Spacing.md,
+    borderRadius: Radius.lg,
+    backgroundColor: Colors.error,
+  },
+  deleteConfirmBtnDisabled: {
+    opacity: 0.4,
+  },
+  deleteConfirmBtnText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#FFFFFF",
+    fontFamily: "DMSans_600SemiBold",
   },
 
   // Version

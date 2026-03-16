@@ -1,99 +1,47 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  listChargers,
-  listenToChargers,
-  type Charger,
-  type ConnectorType,
-} from "@/src/features/chargers";
+import { useState, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { listChargers } from "../features/chargers/charger.repository";
+import type { Charger, ConnectorType } from "../features/chargers/charger.types";
+import { useDebounce } from "./useDebounce";
 
-export type DiscoveryViewMode = "map" | "list";
-export type MinPowerFilter = "any" | "7" | "22" | "50";
-
-const PAGE_SIZE = 12;
+type MinPowerFilter = "any" | "7" | "22" | "50";
+const PAGE_SIZE = 10;
 
 export function useChargerDiscovery() {
-  const [chargers, setChargers] = useState<Charger[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
+  const [viewMode, setViewMode] = useState<"map" | "list">("list");
   const [searchText, setSearchText] = useState("");
   const [connectorFilter, setConnectorFilter] = useState<ConnectorType | "any">("any");
   const [minPowerFilter, setMinPowerFilter] = useState<MinPowerFilter>("any");
-  const [viewMode, setViewMode] = useState<DiscoveryViewMode>("map");
   const [page, setPage] = useState(1);
 
-  useEffect(() => {
-    setIsLoading(true);
-    setError(null);
-    const unsubscribe = listenToChargers(
-      (items) => {
-        setChargers(items.filter((item) => item.status === "verified"));
-        setIsLoading(false);
-      },
-      undefined,
-      (message) => {
-        setError(message);
-        setIsLoading(false);
-      }
-    );
+  const debouncedSearch = useDebounce(searchText, 300);
 
-    return unsubscribe;
-  }, []);
+  const chargersQuery = useQuery({
+    queryKey: ["chargers", "discovery"],
+    queryFn: () => listChargers({ status: "approved" }),
+  });
+
+  const all = useMemo(() => chargersQuery.data ?? [], [chargersQuery.data]);
 
   const filtered = useMemo(() => {
-    const minPower = minPowerFilter === "any" ? 0 : Number(minPowerFilter);
-    const normalizedSearch = searchText.trim().toLowerCase();
-
-    return chargers.filter((item) => {
-      if (normalizedSearch) {
-        const haystack = `${item.name} ${item.suburb} ${item.address}`.toLowerCase();
-        if (!haystack.includes(normalizedSearch)) {
-          return false;
-        }
+    return all.filter((c: Charger) => {
+      if (debouncedSearch) {
+        const hay = `${c.name} ${c.address} ${c.suburb}`.toLowerCase();
+        if (!hay.includes(debouncedSearch.trim().toLowerCase())) return false;
       }
-
-      if (connectorFilter !== "any") {
-        const matchesConnector = item.connectors.some((connector) => connector.type === connectorFilter);
-        if (!matchesConnector) {
-          return false;
-        }
-      }
-
-      if (minPower > 0 && item.maxPowerKw < minPower) {
+      if (connectorFilter !== "any" && !c.connectors.some((cn) => cn.type === connectorFilter))
         return false;
-      }
-
+      if (minPowerFilter !== "any" && c.maxPowerKw < Number(minPowerFilter)) return false;
       return true;
     });
-  }, [chargers, connectorFilter, minPowerFilter, searchText]);
+  }, [all, debouncedSearch, connectorFilter, minPowerFilter]);
 
-  useEffect(() => {
-    setPage(1);
-  }, [searchText, connectorFilter, minPowerFilter]);
-
-  const paged = useMemo(() => filtered.slice(0, page * PAGE_SIZE), [filtered, page]);
-
-  const hasMore = paged.length < filtered.length;
-
-  const loadMore = useCallback(() => {
-    if (hasMore) {
-      setPage((current) => current + 1);
-    }
-  }, [hasMore]);
-
-  const refresh = useCallback(async () => {
-    try {
-      setError(null);
-      const result = await listChargers();
-      setChargers(result.filter((item) => item.status === "verified"));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to refresh chargers.");
-    }
-  }, []);
+  const chargers = filtered.slice(0, page * PAGE_SIZE);
+  const hasMore = chargers.length < filtered.length;
 
   return {
     data: {
-      chargers: paged,
+      chargers,
       total: filtered.length,
       all: filtered,
       viewMode,
@@ -102,15 +50,27 @@ export function useChargerDiscovery() {
       minPowerFilter,
       hasMore,
     },
-    isLoading,
-    error,
-    refresh,
+    isLoading: chargersQuery.isLoading,
+    error: chargersQuery.error?.message || null,
+    refresh: async () => {
+      setPage(1);
+      await chargersQuery.refetch();
+    },
     actions: {
       setViewMode,
-      setSearchText,
-      setConnectorFilter,
-      setMinPowerFilter,
-      loadMore,
+      setSearchText: (text: string) => {
+        setSearchText(text);
+        setPage(1);
+      },
+      setConnectorFilter: (filter: ConnectorType | "any") => {
+        setConnectorFilter(filter);
+        setPage(1);
+      },
+      setMinPowerFilter: (filter: MinPowerFilter) => {
+        setMinPowerFilter(filter);
+        setPage(1);
+      },
+      loadMore: () => setPage((p) => p + 1),
     },
   };
 }

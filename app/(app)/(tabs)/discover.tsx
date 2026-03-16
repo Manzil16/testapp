@@ -189,7 +189,7 @@ export default function DiscoverScreen() {
                           connectorTypes: item.connectors.map((c) => c.type),
                           pricePerKwh: item.pricingPerKwh,
                           badge: item.verificationScore > 85 ? "verified" : "community",
-                          available: item.status === "verified",
+                          available: item.status === "approved",
                         }}
                         onPress={() => router.push(`/(app)/chargers/${item.id}` as any)}
                       />
@@ -246,12 +246,15 @@ const styles = StyleSheet.create({
     minWidth: 140,
     paddingVertical: Spacing.sm,
     paddingHorizontal: Spacing.sm,
+    backgroundColor: '#FFFFFF',
   },
   calloutTitle: {
     ...Typography.cardTitle,
+    color: '#111827',
   },
   calloutText: {
     ...Typography.caption,
+    color: '#6B7280',
   },
   emptyOverlay: {
     position: "absolute",

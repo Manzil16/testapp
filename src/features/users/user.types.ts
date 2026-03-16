@@ -8,6 +8,7 @@ export interface UserProfile {
   phone?: string;
   avatarUrl?: string;
   preferredReservePercent?: number;
+  stripeAccountId?: string;
   createdAtIso: string;
   updatedAtIso: string;
 }

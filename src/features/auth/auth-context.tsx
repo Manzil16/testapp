@@ -1,43 +1,24 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import type { User } from "firebase/auth";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { supabase, testSupabaseConnectivity } from "../../lib/supabase";
 import {
   signInWithEmail,
-  signInWithGoogleCredential,
+  signInWithGoogle,
   signOutCurrentUser,
   signUpWithEmail,
   subscribeToAuthState,
 } from "./auth.service";
-import {
-  listenToUserProfile,
-  upsertUserProfile,
-  updateUserProfile,
-} from "../users/user.repository";
 import type { AppRole, UserProfile } from "../users/user.types";
-import {
-  DEV_PREVIEW_MODE,
-  DEV_PREVIEW_STATE,
-  DEV_PREVIEW_SESSION_USER,
-  buildDevProfile,
-  isFirebasePermissionError,
-  logDevPreviewFallback,
-} from "../shared/dev-preview";
 
-const SESSION_STORAGE_KEY = "vehiclegrid.session.v1";
-
-type SessionIdentity = {
-  uid: string;
-  email: string;
-  displayName: string;
-};
+type SupabaseUser = { id: string; email?: string };
 
 interface AuthContextValue {
-  authUser: User | null;
-  sessionUser: SessionIdentity | null;
+  user: SupabaseUser | null;
   profile: UserProfile | null;
   isAuthenticated: boolean;
   isBootstrapping: boolean;
   isProfileLoading: boolean;
+  needsRoleSelection: boolean;
   login: (email: string, password: string) => Promise<void>;
   loginWithGoogle: (idToken: string) => Promise<void>;
   signup: (input: {
@@ -46,6 +27,7 @@ interface AuthContextValue {
     displayName: string;
     role: AppRole;
   }) => Promise<void>;
+  createProfile: (role: AppRole) => Promise<void>;
   logout: () => Promise<void>;
   updateProfileDetails: (patch: {
     displayName?: string;
@@ -58,277 +40,247 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
-interface AuthProviderProps {
-  children: ReactNode;
-}
-
-function buildSessionIdentity(user: User): SessionIdentity {
+function mapProfile(row: Record<string, unknown>): UserProfile {
   return {
-    uid: user.uid,
-    email: user.email || "",
-    displayName: user.displayName || "VehicleGrid User",
+    id: row.id as string,
+    email: row.email as string,
+    displayName: row.display_name as string,
+    role: row.role as AppRole,
+    phone: (row.phone as string) || undefined,
+    avatarUrl: (row.avatar_url as string) || undefined,
+    preferredReservePercent: row.preferred_reserve_percent as number,
+    stripeAccountId: (row.stripe_account_id as string) || undefined,
+    createdAtIso: row.created_at as string,
+    updatedAtIso: row.updated_at as string,
   };
 }
 
-export function AuthProvider({ children }: AuthProviderProps) {
-  const [authUser, setAuthUser] = useState<User | null>(null);
-  const [sessionUser, setSessionUser] = useState<SessionIdentity | null>(null);
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<SupabaseUser | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [isAuthResolved, setIsAuthResolved] = useState(false);
-  const [isSessionHydrated, setIsSessionHydrated] = useState(false);
+  const [isBootstrapping, setIsBootstrapping] = useState(true);
   const [isProfileLoading, setIsProfileLoading] = useState(false);
+  const [needsRoleSelection, setNeedsRoleSelection] = useState(false);
 
-  async function activateDevSession(role: AppRole = "driver", displayName?: string) {
-    const nextSession: SessionIdentity = {
-      uid: DEV_PREVIEW_SESSION_USER.uid,
-      email: DEV_PREVIEW_SESSION_USER.email,
-      displayName: displayName || DEV_PREVIEW_SESSION_USER.displayName,
-    };
-
-    setAuthUser(null);
-    setSessionUser(nextSession);
-    setProfile(buildDevProfile(nextSession.uid, role, nextSession.displayName, nextSession.email));
-    setIsAuthResolved(true);
-    setIsSessionHydrated(true);
-    setIsProfileLoading(false);
-    await AsyncStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(nextSession));
-  }
-
+  // Bootstrap: verify connectivity then check existing session
   useEffect(() => {
-    let isMounted = true;
-
+    let cancelled = false;
     (async () => {
-      try {
-        const cached = await AsyncStorage.getItem(SESSION_STORAGE_KEY);
-        if (!isMounted || !cached) {
-          return;
-        }
-
-        const parsed = JSON.parse(cached) as SessionIdentity;
-        if (
-          !DEV_PREVIEW_MODE &&
-          parsed.uid &&
-          parsed.uid === DEV_PREVIEW_SESSION_USER.uid
-        ) {
-          await AsyncStorage.removeItem(SESSION_STORAGE_KEY);
-          return;
-        }
-
-        if (parsed.uid) {
-          setSessionUser(parsed);
-        }
-      } catch {
-        // no-op: cache is best-effort only
-      } finally {
-        if (isMounted) {
-          setIsSessionHydrated(true);
+      if (__DEV__) {
+        const reachable = await testSupabaseConnectivity();
+        if (!reachable && !cancelled) {
+          console.warn(
+            "[auth] Supabase is unreachable. Check EXPO_PUBLIC_SUPABASE_URL " +
+              "and EXPO_PUBLIC_SUPABASE_ANON_KEY in .env.local"
+          );
         }
       }
+      const { data: { session }, error } = await supabase.auth.getSession();
+      if (cancelled) return;
+      if (__DEV__ && error) {
+        console.error("[auth] getSession error:", error.message);
+      }
+      setUser(session?.user ?? null);
+      setIsBootstrapping(false);
     })();
 
     return () => {
-      isMounted = false;
+      cancelled = true;
     };
   }, []);
 
+  // Listen for auth state changes
   useEffect(() => {
-    return subscribeToAuthState(
-      async (nextUser) => {
-        setAuthUser(nextUser);
-        setIsAuthResolved(true);
-
-        if (nextUser) {
-          const nextSession = buildSessionIdentity(nextUser);
-          setSessionUser(nextSession);
-          await AsyncStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(nextSession));
-        }
-      },
-      async (error) => {
-        if (!DEV_PREVIEW_MODE) {
-          setIsAuthResolved(true);
-          return;
-        }
-
-        logDevPreviewFallback("auth-state", error);
-        await activateDevSession();
+    return subscribeToAuthState((nextUser) => {
+      if (__DEV__) console.log("[auth] auth state changed — user:", nextUser?.id ?? "null");
+      setUser(nextUser);
+      if (!nextUser) {
+        setProfile(null);
+        setNeedsRoleSelection(false);
       }
-    );
+    });
   }, []);
 
+  // Fetch profile when user changes
   useEffect(() => {
-    if (!isAuthResolved || !isSessionHydrated) {
-      return;
-    }
-
-    const activeIdentity: SessionIdentity | null =
-      authUser && authUser.uid
-        ? buildSessionIdentity(authUser)
-        : sessionUser;
-
-    if (!activeIdentity) {
+    if (!user) {
       setProfile(null);
+      setNeedsRoleSelection(false);
       setIsProfileLoading(false);
       return;
     }
 
+    if (__DEV__) console.log("[auth] user set, fetching profile for:", user.id);
     setIsProfileLoading(true);
 
-    const unsubscribe = listenToUserProfile(
-      activeIdentity.uid,
-      async (nextProfile) => {
-        if (nextProfile) {
-          setProfile(nextProfile);
-          setIsProfileLoading(false);
-          return;
-        }
-
-        try {
-          await upsertUserProfile(activeIdentity.uid, {
-            email: activeIdentity.email,
-            displayName: activeIdentity.displayName,
-            role: "driver",
-          });
-        } catch (error) {
-          if (!DEV_PREVIEW_MODE || !isFirebasePermissionError(error)) {
-            setIsProfileLoading(false);
-            return;
+    // Subscribe to realtime profile changes
+    const channel = supabase
+      .channel(`profile:${user.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "profiles",
+          filter: `id=eq.${user.id}`,
+        },
+        (payload) => {
+          if (payload.new && typeof payload.new === "object" && "id" in payload.new) {
+            if (__DEV__) console.log("[auth] profile realtime update received");
+            setProfile(mapProfile(payload.new as Record<string, unknown>));
           }
+        }
+      )
+      .subscribe();
 
-          logDevPreviewFallback("profile-upsert", error);
-          setProfile(
-            buildDevProfile(
-              activeIdentity.uid,
-              "driver",
-              activeIdentity.displayName,
-              activeIdentity.email
-            )
+    // Initial fetch with retry — the auto-create trigger may not have
+    // finished by the time we query, especially right after sign-up.
+    // If profile doesn't exist after retries, flag for role selection.
+    let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    const fetchProfile = async (attempt: number) => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", user.id)
+        .single();
+
+      if (cancelled) return;
+
+      if (data && !error) {
+        if (__DEV__) console.log("[auth] profile loaded:", data.display_name, "role:", data.role);
+        setProfile(mapProfile(data as Record<string, unknown>));
+        setNeedsRoleSelection(false);
+        setIsProfileLoading(false);
+      } else {
+        if (__DEV__) {
+          console.warn(
+            `[auth] profile fetch attempt ${attempt} failed:`,
+            error?.message || "no data",
+            error?.code || ""
           );
-        } finally {
+        }
+        if (attempt < 3) {
+          retryTimer = setTimeout(() => fetchProfile(attempt + 1), attempt * 1000);
+        } else {
+          // No profile found — user needs to pick a role
+          if (__DEV__) console.log("[auth] no profile after retries, needs role selection");
+          setNeedsRoleSelection(true);
           setIsProfileLoading(false);
         }
-      },
-      () => {
-        setProfile(null);
-        setIsProfileLoading(false);
       }
-    );
+    };
 
-    return unsubscribe;
-  }, [authUser, isAuthResolved, isSessionHydrated, sessionUser]);
+    fetchProfile(1);
+
+    return () => {
+      cancelled = true;
+      if (retryTimer) {
+        clearTimeout(retryTimer);
+      }
+      supabase.removeChannel(channel);
+    };
+  }, [user]);
 
   const value = useMemo<AuthContextValue>(
     () => ({
-      authUser,
-      sessionUser,
+      user,
       profile,
-      isAuthenticated: Boolean(authUser || sessionUser),
-      isBootstrapping: !isAuthResolved || !isSessionHydrated,
+      isAuthenticated: Boolean(user),
+      isBootstrapping,
       isProfileLoading,
+      needsRoleSelection,
       login: async (email, password) => {
-        try {
-          await signInWithEmail(email, password);
-        } catch (error) {
-          if (!DEV_PREVIEW_MODE) {
-            throw error;
-          }
-
-          logDevPreviewFallback("auth-login", error);
-          await activateDevSession("driver", email.split("@")[0] || undefined);
-        }
+        await signInWithEmail(email, password);
       },
       loginWithGoogle: async (idToken: string) => {
-        try {
-          await signInWithGoogleCredential(idToken);
-          // onAuthStateChanged handles session + profile creation automatically
-        } catch (error) {
-          if (!DEV_PREVIEW_MODE) {
-            throw error;
-          }
-
-          logDevPreviewFallback("auth-google", error);
-          await activateDevSession("driver", "Google User");
-        }
+        await signInWithGoogle(idToken);
       },
       signup: async ({ email, password, displayName, role }) => {
-        try {
-          await signUpWithEmail(email, password, displayName, role);
-        } catch (error) {
-          if (!DEV_PREVIEW_MODE) {
-            throw error;
+        const result = await signUpWithEmail(email, password, displayName, role);
+        // If we have a session, immediately refresh and fetch the profile
+        // so the role is available before navigation happens.
+        if (result.session && result.user) {
+          await supabase.auth.refreshSession();
+          const { data: profileData } = await supabase
+            .from("profiles")
+            .select("*")
+            .eq("id", result.user.id)
+            .single();
+          if (profileData) {
+            setProfile(mapProfile(profileData as Record<string, unknown>));
+            setNeedsRoleSelection(false);
           }
+        }
+      },
+      createProfile: async (role: AppRole) => {
+        if (!user) throw new Error("Not authenticated");
 
-          logDevPreviewFallback("auth-signup", error);
-          await activateDevSession(role, displayName);
+        const { data: { user: authUser } } = await supabase.auth.getUser();
+        if (!authUser) throw new Error("Could not get auth user");
+
+        const meta = authUser.user_metadata ?? {};
+        const displayName = (meta.display_name as string)
+          || (meta.full_name as string)
+          || (meta.name as string)
+          || "VehicleGrid User";
+        const email = authUser.email || "";
+
+        if (__DEV__) {
+          console.log("[auth] creating profile:", { displayName, role, email });
+        }
+
+        const { data, error } = await supabase
+          .from("profiles")
+          .upsert({
+            id: authUser.id,
+            email,
+            display_name: displayName,
+            role,
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+        if (data) {
+          setProfile(mapProfile(data as Record<string, unknown>));
+          setNeedsRoleSelection(false);
         }
       },
       logout: async () => {
-        setSessionUser(null);
-        setProfile(null);
-        await AsyncStorage.removeItem(SESSION_STORAGE_KEY);
+        await signOutCurrentUser();
 
         try {
-          await signOutCurrentUser();
-        } catch (error) {
-          if (!DEV_PREVIEW_MODE) {
-            throw error;
-          }
-
-          logDevPreviewFallback("auth-logout", error);
+          await AsyncStorage.clear();
+        } catch {
+          // ignore AsyncStorage errors during sign out
         }
+
+        setUser(null);
+        setProfile(null);
+        setNeedsRoleSelection(false);
       },
       updateProfileDetails: async (patch) => {
-        const uid = authUser?.uid || sessionUser?.uid;
+        if (!user) throw new Error("Not authenticated");
 
-        if (!uid) {
-          throw new Error("Not authenticated");
-        }
+        const updatePayload: Record<string, unknown> = {};
+        if (patch.displayName !== undefined) updatePayload.display_name = patch.displayName;
+        if (patch.phone !== undefined) updatePayload.phone = patch.phone;
+        if (patch.avatarUrl !== undefined) updatePayload.avatar_url = patch.avatarUrl;
+        if (patch.preferredReservePercent !== undefined)
+          updatePayload.preferred_reserve_percent = patch.preferredReservePercent;
+        if (patch.role !== undefined) updatePayload.role = patch.role;
 
-        // Filter out undefined values — Firestore rejects them
-        const cleanPatch = Object.fromEntries(
-          Object.entries(patch).filter(([, v]) => v !== undefined)
-        );
+        if (Object.keys(updatePayload).length === 0) return;
 
-        if (Object.keys(cleanPatch).length === 0) {
-          return; // Nothing to update
-        }
-
-        try {
-          await updateUserProfile(uid, cleanPatch);
-        } catch (error) {
-          if (!DEV_PREVIEW_MODE || !isFirebasePermissionError(error)) {
-            throw error;
-          }
-
-          logDevPreviewFallback("profile-update", error);
-          setProfile((current) => {
-            const fallbackBase =
-              current ||
-              buildDevProfile(
-                uid,
-                patch.role || "driver",
-                patch.displayName,
-                sessionUser?.email
-              );
-
-            const next: UserProfile = {
-              ...fallbackBase,
-              ...patch,
-              id: uid,
-              role: patch.role || fallbackBase.role,
-              displayName: patch.displayName || fallbackBase.displayName,
-              phone: patch.phone ?? fallbackBase.phone,
-              preferredReservePercent:
-                patch.preferredReservePercent ?? fallbackBase.preferredReservePercent,
-              updatedAtIso: new Date().toISOString(),
-            };
-
-            DEV_PREVIEW_STATE.profiles[uid] = next;
-            return next;
-          });
-        }
+        const { error } = await supabase
+          .from("profiles")
+          .update(updatePayload)
+          .eq("id", user.id);
+        if (error) throw error;
       },
     }),
-    [authUser, isAuthResolved, isProfileLoading, isSessionHydrated, profile, sessionUser]
+    [user, profile, isBootstrapping, isProfileLoading, needsRoleSelection]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

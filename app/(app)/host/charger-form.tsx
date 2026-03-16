@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   Alert,
+  Image,
+  Pressable,
   StyleSheet,
   Text,
   View,
@@ -12,20 +14,26 @@ import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import {
   EmptyStateCard,
   FilterChip,
+  GradientButton,
   InputField,
-  PrimaryCTA,
+  PremiumCard,
   ScreenContainer,
   SectionTitle,
   Typography,
   Colors,
   Radius,
-  Shadows,
   Spacing,
 } from "@/src/components";
 import { useAuth } from "@/src/features/auth/auth-context";
 import { type AvailabilityDay, type ConnectorType } from "@/src/features/chargers";
 import { useHostChargers } from "@/src/hooks";
+import {
+  pickAndUploadChargerImage,
+  captureAndUploadChargerImage,
+  deleteChargerImage,
+} from "@/src/services/imageService";
 
+const MAX_PHOTOS = 6;
 const connectorOptions: ConnectorType[] = ["Type2", "CCS2", "CHAdeMO", "Tesla"];
 const amenityOptions = ["WiFi", "Parking", "Restroom", "Cafe", "CCTV", "Lighting"];
 const weekdays: AvailabilityDay[] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -38,11 +46,11 @@ function parseNumber(value: string, fallback: number) {
 export default function HostChargerFormScreen() {
   const router = useRouter();
   const { chargerId } = useLocalSearchParams<{ chargerId?: string }>();
-  const { authUser, sessionUser } = useAuth();
+  const { user } = useAuth();
 
   const userId = useMemo(
-    () => authUser?.uid || sessionUser?.uid,
-    [authUser?.uid, sessionUser?.uid]
+    () => user?.id,
+    [user?.id]
   );
 
   const { error, actions } = useHostChargers(userId);
@@ -70,6 +78,11 @@ export default function HostChargerFormScreen() {
   const [fromTime, setFromTime] = useState("06:00");
   const [toTime, setToTime] = useState("22:00");
 
+  // Photo upload state
+  const [images, setImages] = useState<string[]>([]);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [uploading, setUploading] = useState(false);
+
   useEffect(() => {
     if (!chargerId) {
       setLoading(false);
@@ -94,6 +107,9 @@ export default function HostChargerFormScreen() {
         setPricePerKwh(String(charger.pricingPerKwh));
         setSelectedConnectors(charger.connectors.map((item) => item.type));
         setSelectedAmenities(charger.amenities);
+        if (charger.images) {
+          setImages(charger.images);
+        }
         if (charger.availabilityWindow) {
           const availableDays = new Set(charger.availabilityWindow.days);
           setAvailabilityDays(
@@ -126,6 +142,77 @@ export default function HostChargerFormScreen() {
 
   const toggleDay = (day: AvailabilityDay) => {
     setAvailabilityDays((current) => ({ ...current, [day]: !current[day] }));
+  };
+
+  // Photo upload handlers
+  const handleAddPhoto = () => {
+    if (images.length >= MAX_PHOTOS) {
+      Alert.alert("Limit reached", `You can upload up to ${MAX_PHOTOS} photos.`);
+      return;
+    }
+
+    Alert.alert("Add Photo", "Choose a source", [
+      {
+        text: "Camera",
+        onPress: handleCameraCapture,
+      },
+      {
+        text: "Gallery",
+        onPress: handleGalleryPick,
+      },
+      { text: "Cancel", style: "cancel" },
+    ]);
+  };
+
+  const handleGalleryPick = async () => {
+    const targetId = chargerId || "new-charger";
+    try {
+      setUploading(true);
+      setUploadProgress(0);
+      const url = await pickAndUploadChargerImage(targetId, setUploadProgress);
+      setImages((prev) => [...prev, url]);
+    } catch (err) {
+      if (err instanceof Error && err.message.includes("cancelled")) return;
+      Alert.alert("Upload failed", err instanceof Error ? err.message : "Unknown error");
+    } finally {
+      setUploading(false);
+      setUploadProgress(null);
+    }
+  };
+
+  const handleCameraCapture = async () => {
+    const targetId = chargerId || "new-charger";
+    try {
+      setUploading(true);
+      setUploadProgress(0);
+      const url = await captureAndUploadChargerImage(targetId, setUploadProgress);
+      setImages((prev) => [...prev, url]);
+    } catch (err) {
+      if (err instanceof Error && err.message.includes("cancelled")) return;
+      Alert.alert("Upload failed", err instanceof Error ? err.message : "Unknown error");
+    } finally {
+      setUploading(false);
+      setUploadProgress(null);
+    }
+  };
+
+  const handleDeletePhoto = (index: number) => {
+    const url = images[index];
+    Alert.alert("Delete Photo", "Remove this photo from the listing?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await deleteChargerImage(url);
+          } catch {
+            // best-effort deletion from storage
+          }
+          setImages((prev) => prev.filter((_, i) => i !== index));
+        },
+      },
+    ]);
   };
 
   const save = async () => {
@@ -185,6 +272,7 @@ export default function HostChargerFormScreen() {
             startTime: fromTime,
             endTime: toTime,
           },
+          images,
         },
       });
 
@@ -217,97 +305,176 @@ export default function HostChargerFormScreen() {
 
         {error ? <EmptyStateCard icon="⚠️" title="Form error" message={error} /> : null}
 
-        <Animated.View entering={FadeInDown.duration(260)} style={styles.card}>
-          <SectionTitle title="Basic Info" topSpacing={Spacing.xs} />
-          <InputField label="Name" value={name} onChangeText={setName} />
-          <InputField label="Description" value={description} onChangeText={setDescription} multiline numberOfLines={3} />
+        {/* Photos Section */}
+        <Animated.View entering={FadeInDown.duration(260)}>
+          <PremiumCard style={styles.section}>
+            <SectionTitle title="Photos" topSpacing={Spacing.xs} />
+            <Text style={styles.photoHint}>
+              Add up to {MAX_PHOTOS} photos. Great photos attract more bookings.
+            </Text>
 
-          <SectionTitle title="Location" />
-          <InputField label="Address" value={address} onChangeText={setAddress} />
-          <InputField label="Suburb" value={suburb} onChangeText={setSuburb} />
-          <InputField label="State" value={stateCode} onChangeText={setStateCode} />
+            {images.length > 0 ? (
+              <View style={styles.photoGrid}>
+                {images.map((uri, index) => (
+                  <View key={uri} style={styles.photoThumb}>
+                    <Image source={{ uri }} style={styles.thumbImage} />
+                    <Pressable
+                      style={styles.deleteBtn}
+                      onPress={() => handleDeletePhoto(index)}
+                      hitSlop={8}
+                    >
+                      <Text style={styles.deleteBtnText}>✕</Text>
+                    </Pressable>
+                  </View>
+                ))}
+                {images.length < MAX_PHOTOS && (
+                  <Pressable style={styles.addPhotoBtn} onPress={handleAddPhoto}>
+                    <Text style={styles.addPhotoIcon}>+</Text>
+                    <Text style={styles.addPhotoLabel}>Add</Text>
+                  </Pressable>
+                )}
+              </View>
+            ) : (
+              <Pressable style={styles.emptyPhotoArea} onPress={handleAddPhoto}>
+                <Text style={styles.emptyPhotoIcon}>📷</Text>
+                <Text style={styles.emptyPhotoText}>Tap to add your first photo</Text>
+              </Pressable>
+            )}
 
-          <View style={styles.mapWrap}>
-            <MapView
-              style={styles.map}
-              initialRegion={{
-                latitude,
-                longitude,
-                latitudeDelta: 0.08,
-                longitudeDelta: 0.08,
-              }}
-              onPress={(event) => {
-                setLatitude(event.nativeEvent.coordinate.latitude);
-                setLongitude(event.nativeEvent.coordinate.longitude);
-              }}
-            >
-              <Marker coordinate={{ latitude, longitude }} />
-            </MapView>
-          </View>
-          <Text style={styles.coordText}>
-            Pin: {latitude.toFixed(5)}, {longitude.toFixed(5)}
-          </Text>
+            {uploading && uploadProgress !== null && (
+              <View style={styles.progressWrap}>
+                <View style={styles.progressTrack}>
+                  <View
+                    style={[styles.progressFill, { width: `${Math.round(uploadProgress * 100)}%` }]}
+                  />
+                </View>
+                <Text style={styles.progressText}>
+                  {Math.round(uploadProgress * 100)}% uploaded
+                </Text>
+              </View>
+            )}
 
-          <SectionTitle title="Specs" />
-          <InputField
-            label="Power (kW)"
-            value={powerKw}
-            onChangeText={setPowerKw}
-            keyboardType="numeric"
-          />
-          <InputField
-            label="Price per kWh"
-            value={pricePerKwh}
-            onChangeText={setPricePerKwh}
-            keyboardType="numeric"
-          />
-          <Text style={styles.inlineLabel}>Connector Types</Text>
-          <View style={styles.chipWrap}>
-            {connectorOptions.map((option) => (
-              <FilterChip
-                key={option}
-                label={option}
-                active={selectedConnectors.includes(option)}
-                onPress={() => toggleConnector(option)}
-              />
-            ))}
-          </View>
-
-          <SectionTitle title="Availability" />
-          <Text style={styles.inlineLabel}>Days</Text>
-          <View style={styles.chipWrap}>
-            {weekdays.map((day) => (
-              <FilterChip
-                key={day}
-                label={day}
-                active={availabilityDays[day]}
-                onPress={() => toggleDay(day)}
-              />
-            ))}
-          </View>
-          <View style={styles.timeRow}>
-            <InputField label="From" value={fromTime} onChangeText={setFromTime} containerStyle={styles.half} />
-            <InputField label="To" value={toTime} onChangeText={setToTime} containerStyle={styles.half} />
-          </View>
-
-          <SectionTitle title="Amenities" />
-          <View style={styles.chipWrap}>
-            {amenityOptions.map((option) => (
-              <FilterChip
-                key={option}
-                label={option}
-                active={selectedAmenities.includes(option)}
-                onPress={() => toggleAmenity(option)}
-              />
-            ))}
-          </View>
-
-          <PrimaryCTA
-            label={chargerId ? "Update Charger" : "Save Charger"}
-            onPress={save}
-            loading={saving}
-          />
+            <Text style={styles.photoCount}>
+              {images.length}/{MAX_PHOTOS} photos
+            </Text>
+          </PremiumCard>
         </Animated.View>
+
+        {/* Basic Info */}
+        <Animated.View entering={FadeInDown.delay(60).duration(260)}>
+          <PremiumCard style={styles.section}>
+            <SectionTitle title="Basic Info" topSpacing={Spacing.xs} />
+            <InputField label="Name" value={name} onChangeText={setName} />
+            <InputField label="Description" value={description} onChangeText={setDescription} multiline numberOfLines={3} />
+          </PremiumCard>
+        </Animated.View>
+
+        {/* Location */}
+        <Animated.View entering={FadeInDown.delay(120).duration(260)}>
+          <PremiumCard style={styles.section}>
+            <SectionTitle title="Location" topSpacing={Spacing.xs} />
+            <InputField label="Address" value={address} onChangeText={setAddress} />
+            <InputField label="Suburb" value={suburb} onChangeText={setSuburb} />
+            <InputField label="State" value={stateCode} onChangeText={setStateCode} />
+
+            <View style={styles.mapWrap}>
+              <MapView
+                style={styles.map}
+                initialRegion={{
+                  latitude,
+                  longitude,
+                  latitudeDelta: 0.08,
+                  longitudeDelta: 0.08,
+                }}
+                onPress={(event) => {
+                  setLatitude(event.nativeEvent.coordinate.latitude);
+                  setLongitude(event.nativeEvent.coordinate.longitude);
+                }}
+              >
+                <Marker coordinate={{ latitude, longitude }} />
+              </MapView>
+            </View>
+            <Text style={styles.coordText}>
+              Pin: {latitude.toFixed(5)}, {longitude.toFixed(5)}
+            </Text>
+          </PremiumCard>
+        </Animated.View>
+
+        {/* Specs */}
+        <Animated.View entering={FadeInDown.delay(180).duration(260)}>
+          <PremiumCard style={styles.section}>
+            <SectionTitle title="Specs" topSpacing={Spacing.xs} />
+            <InputField
+              label="Power (kW)"
+              value={powerKw}
+              onChangeText={setPowerKw}
+              keyboardType="numeric"
+            />
+            <InputField
+              label="Price per kWh"
+              value={pricePerKwh}
+              onChangeText={setPricePerKwh}
+              keyboardType="numeric"
+            />
+            <Text style={styles.inlineLabel}>Connector Types</Text>
+            <View style={styles.chipWrap}>
+              {connectorOptions.map((option) => (
+                <FilterChip
+                  key={option}
+                  label={option}
+                  active={selectedConnectors.includes(option)}
+                  onPress={() => toggleConnector(option)}
+                />
+              ))}
+            </View>
+          </PremiumCard>
+        </Animated.View>
+
+        {/* Availability */}
+        <Animated.View entering={FadeInDown.delay(240).duration(260)}>
+          <PremiumCard style={styles.section}>
+            <SectionTitle title="Availability" topSpacing={Spacing.xs} />
+            <Text style={styles.inlineLabel}>Days</Text>
+            <View style={styles.chipWrap}>
+              {weekdays.map((day) => (
+                <FilterChip
+                  key={day}
+                  label={day}
+                  active={availabilityDays[day]}
+                  onPress={() => toggleDay(day)}
+                />
+              ))}
+            </View>
+            <View style={styles.timeRow}>
+              <InputField label="From" value={fromTime} onChangeText={setFromTime} containerStyle={styles.half} />
+              <InputField label="To" value={toTime} onChangeText={setToTime} containerStyle={styles.half} />
+            </View>
+          </PremiumCard>
+        </Animated.View>
+
+        {/* Amenities */}
+        <Animated.View entering={FadeInDown.delay(300).duration(260)}>
+          <PremiumCard style={styles.section}>
+            <SectionTitle title="Amenities" topSpacing={Spacing.xs} />
+            <View style={styles.chipWrap}>
+              {amenityOptions.map((option) => (
+                <FilterChip
+                  key={option}
+                  label={option}
+                  active={selectedAmenities.includes(option)}
+                  onPress={() => toggleAmenity(option)}
+                />
+              ))}
+            </View>
+          </PremiumCard>
+        </Animated.View>
+
+        <GradientButton
+          label={chargerId ? "Update Charger" : "Save Charger"}
+          onPress={save}
+          loading={saving}
+          style={styles.saveBtn}
+        />
       </ScreenContainer>
     </SafeAreaView>
   );
@@ -318,12 +485,8 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.background,
   },
-  card: {
-    marginTop: Spacing.md,
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.card,
-    padding: Spacing.cardPadding,
-    ...Shadows.card,
+  section: {
+    marginBottom: Spacing.md,
   },
   mapWrap: {
     height: 190,
@@ -354,5 +517,115 @@ const styles = StyleSheet.create({
   },
   half: {
     flex: 1,
+  },
+  saveBtn: {
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.xxl,
+  },
+
+  // Photo upload styles
+  photoHint: {
+    ...Typography.caption,
+    color: Colors.textMuted,
+    marginBottom: Spacing.md,
+  },
+  photoGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: Spacing.sm,
+  },
+  photoThumb: {
+    width: 100,
+    height: 100,
+    borderRadius: Radius.md,
+    overflow: "hidden",
+    position: "relative",
+  },
+  thumbImage: {
+    width: "100%",
+    height: "100%",
+  },
+  deleteBtn: {
+    position: "absolute",
+    top: 4,
+    right: 4,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: "rgba(0,0,0,0.7)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  deleteBtnText: {
+    color: "#FFF",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  addPhotoBtn: {
+    width: 100,
+    height: 100,
+    borderRadius: Radius.md,
+    borderWidth: 2,
+    borderColor: Colors.accent,
+    borderStyle: "dashed",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: Colors.surfaceAlt,
+  },
+  addPhotoIcon: {
+    fontSize: 28,
+    color: Colors.accent,
+    fontWeight: "300",
+  },
+  addPhotoLabel: {
+    fontSize: 11,
+    color: Colors.accent,
+    fontWeight: "600",
+    marginTop: 2,
+  },
+  emptyPhotoArea: {
+    height: 140,
+    borderRadius: Radius.lg,
+    borderWidth: 2,
+    borderColor: Colors.border,
+    borderStyle: "dashed",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: Colors.surfaceAlt,
+  },
+  emptyPhotoIcon: {
+    fontSize: 36,
+    marginBottom: Spacing.xs,
+  },
+  emptyPhotoText: {
+    fontSize: 14,
+    color: Colors.textMuted,
+    fontWeight: "500",
+  },
+  progressWrap: {
+    marginTop: Spacing.md,
+  },
+  progressTrack: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: Colors.surfaceAlt,
+    overflow: "hidden",
+  },
+  progressFill: {
+    height: "100%",
+    borderRadius: 3,
+    backgroundColor: Colors.accent,
+  },
+  progressText: {
+    ...Typography.caption,
+    color: Colors.accent,
+    marginTop: 4,
+    textAlign: "center",
+  },
+  photoCount: {
+    ...Typography.caption,
+    color: Colors.textMuted,
+    marginTop: Spacing.sm,
+    textAlign: "right",
   },
 });

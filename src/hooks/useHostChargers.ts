@@ -1,144 +1,74 @@
-import { useCallback, useEffect, useState } from "react";
+import { useMemo, useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  getChargerById,
-  listenToHostChargers,
+  listChargersByHost,
   upsertCharger,
-  type Charger,
-  type UpsertChargerInput,
-} from "@/src/features/chargers";
+  getChargerById,
+} from "../features/chargers/charger.repository";
 import {
   createVerificationRequest,
   listVerificationRequestsByHost,
-  type VerificationRequest,
-} from "@/src/features/verification";
+} from "../features/verification/verification.repository";
+import type { UpsertChargerInput, Charger } from "../features/chargers/charger.types";
+import type { VerificationRequest } from "../features/verification/verification.types";
 
 export function useHostChargers(hostUserId?: string) {
-  const [chargers, setChargers] = useState<Charger[]>([]);
-  const [verificationByCharger, setVerificationByCharger] = useState<
-    Record<string, VerificationRequest>
-  >({});
-  const [isLoading, setIsLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!hostUserId) {
-      setChargers([]);
-      setVerificationByCharger({});
-      setError(null);
-      setIsLoading(false);
-      return;
-    }
+  const chargersQuery = useQuery({
+    queryKey: ["chargers", "host", hostUserId],
+    queryFn: () => listChargersByHost(hostUserId!),
+    enabled: Boolean(hostUserId),
+  });
 
-    setIsLoading(true);
-    setError(null);
-    const unsubscribe = listenToHostChargers(
-      hostUserId,
-      (items) => {
-        setChargers(items);
-        setIsLoading(false);
+  const verificationsQuery = useQuery({
+    queryKey: ["verifications", "host", hostUserId],
+    queryFn: () => listVerificationRequestsByHost(hostUserId!),
+    enabled: Boolean(hostUserId),
+  });
 
-        // Load verification requests to show rejection reasons
-        listVerificationRequestsByHost(hostUserId)
-          .then((requests) => {
-            const byCharger: Record<string, VerificationRequest> = {};
-            for (const req of requests) {
-              // Keep the most recent request per charger
-              if (
-                !byCharger[req.chargerId] ||
-                req.updatedAtIso > byCharger[req.chargerId].updatedAtIso
-              ) {
-                byCharger[req.chargerId] = req;
-              }
-            }
-            setVerificationByCharger(byCharger);
-          })
-          .catch(() => {
-            // Non-critical — charger list still works without rejection reasons
-          });
-      },
-      (message) => {
-        setError(message);
-        setIsLoading(false);
-      }
-    );
+  const chargers = useMemo(() => chargersQuery.data ?? [], [chargersQuery.data]);
+  const verifications = useMemo(() => verificationsQuery.data ?? [], [verificationsQuery.data]);
 
-    return unsubscribe;
-  }, [hostUserId]);
+  const verificationByCharger = useMemo(() => {
+    const map: Record<string, VerificationRequest> = {};
+    for (const v of verifications) map[v.chargerId] = v;
+    return map;
+  }, [verifications]);
 
-  const refresh = useCallback(async () => {
-    // Firestore listener keeps this hook synced; kept for API consistency.
-    return;
-  }, []);
-
-  const saveCharger = useCallback(
-    async (input: {
-      chargerId?: string;
-      payload: UpsertChargerInput;
-    }) => {
-      if (!hostUserId) {
-        throw new Error("You must be signed in as host.");
-      }
-
-      const isNew = !input.chargerId;
-      const nextId = input.chargerId || `charger-${hostUserId}-${Date.now()}`;
-      const existingStatus =
-        chargers.find((item) => item.id === nextId)?.status || "pending_verification";
-
-      await upsertCharger(
-        nextId,
-        hostUserId,
-        input.payload,
-        isNew ? "pending_verification" : existingStatus
-      );
-
-      if (isNew) {
-        await createVerificationRequest({
-          chargerId: nextId,
-          hostUserId,
-          note: "Initial host submission",
-        });
-      }
-
-      return nextId;
+  const saveMutation = useMutation({
+    mutationFn: (input: { chargerId?: string; payload: UpsertChargerInput }) =>
+      upsertCharger(input.chargerId || null, hostUserId!, input.payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["chargers", "host", hostUserId] });
     },
-    [chargers, hostUserId]
-  );
+  });
 
-  const requestReverification = useCallback(
-    async (charger: Charger) => {
-      if (!hostUserId) {
-        throw new Error("You must be signed in as host.");
-      }
-
-      if (charger.status === "pending_verification") {
-        throw new Error("This charger is already pending admin review.");
-      }
-
-      await createVerificationRequest({
+  const reverifyMutation = useMutation({
+    mutationFn: (charger: Charger) =>
+      createVerificationRequest({
         chargerId: charger.id,
-        hostUserId,
-        note: "Host requested re-verification",
-      });
+        hostUserId: charger.hostUserId,
+        note: "Re-verification requested by host",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["verifications"] });
     },
-    [hostUserId]
-  );
-
-  const loadCharger = useCallback(async (chargerId: string) => {
-    return getChargerById(chargerId);
-  }, []);
+  });
 
   return {
-    data: {
-      chargers,
-      verificationByCharger,
+    data: { chargers, verificationByCharger },
+    isLoading: chargersQuery.isLoading,
+    error: error || chargersQuery.error?.message || null,
+    refresh: async () => {
+      await Promise.all([chargersQuery.refetch(), verificationsQuery.refetch()]);
     },
-    isLoading,
-    error,
-    refresh,
     actions: {
-      saveCharger,
-      requestReverification,
-      loadCharger,
+      saveCharger: (input: { chargerId?: string; payload: UpsertChargerInput }) =>
+        saveMutation.mutateAsync(input),
+      requestReverification: (charger: Charger) => reverifyMutation.mutateAsync(charger),
+      loadCharger: (chargerId: string) => getChargerById(chargerId).then((c) => c!),
       setError,
     },
   };

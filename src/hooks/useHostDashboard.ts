@@ -1,110 +1,55 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { listenToBookingsByHost, type Booking } from "@/src/features/bookings";
-import { listChargersByHost, listenToHostChargers, type Charger } from "@/src/features/chargers";
+import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { listBookingsByHost } from "../features/bookings/booking.repository";
+import { listChargersByHost } from "../features/chargers/charger.repository";
+import type { Booking } from "../features/bookings/booking.types";
 
 export function useHostDashboard(userId?: string) {
-  const [chargers, setChargers] = useState<Charger[]>([]);
-  const [bookings, setBookings] = useState<Booking[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const chargersQuery = useQuery({
+    queryKey: ["chargers", "host", userId],
+    queryFn: () => listChargersByHost(userId!),
+    enabled: Boolean(userId),
+  });
 
-  useEffect(() => {
-    if (!userId) {
-      setChargers([]);
-      setBookings([]);
-      setError(null);
-      setIsLoading(false);
-      return;
-    }
+  const bookingsQuery = useQuery({
+    queryKey: ["bookings", "host", userId],
+    queryFn: () => listBookingsByHost(userId!),
+    enabled: Boolean(userId),
+  });
 
-    setIsLoading(true);
-    setError(null);
-    let chargersReady = false;
-    let bookingsReady = false;
+  const chargers = useMemo(() => chargersQuery.data ?? [], [chargersQuery.data]);
+  const bookings = useMemo(() => bookingsQuery.data ?? [], [bookingsQuery.data]);
 
-    const markReady = () => {
-      if (chargersReady && bookingsReady) {
-        setIsLoading(false);
+  const { pendingBookings, activeSessions, completedThisMonth, estimatedRevenue } =
+    useMemo(() => {
+      const now = new Date();
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      const pending: Booking[] = [];
+      const active: Booking[] = [];
+      const completed: Booking[] = [];
+      let revenue = 0;
+
+      for (const b of bookings) {
+        if (b.status === "requested") pending.push(b);
+        else if (b.status === "in_progress" || b.status === "approved") active.push(b);
+        else if (
+          b.status === "completed" &&
+          new Date(b.createdAtIso) >= monthStart
+        ) {
+          completed.push(b);
+          revenue += b.totalAmount - b.platformFee;
+        }
       }
-    };
+      return {
+        pendingBookings: pending,
+        activeSessions: active,
+        completedThisMonth: completed,
+        estimatedRevenue: revenue,
+      };
+    }, [bookings]);
 
-    const unsubChargers = listenToHostChargers(
-      userId,
-      (items) => {
-        setChargers(items);
-        chargersReady = true;
-        markReady();
-      },
-      (message) => {
-        setError(message);
-        chargersReady = true;
-        markReady();
-      }
-    );
-
-    const unsubBookings = listenToBookingsByHost(
-      userId,
-      (items) => {
-        setBookings(items);
-        bookingsReady = true;
-        markReady();
-      },
-      (message) => {
-        setError(message);
-        bookingsReady = true;
-        markReady();
-      }
-    );
-
-    return () => {
-      unsubChargers();
-      unsubBookings();
-    };
-  }, [userId]);
-
-  const refresh = useCallback(async () => {
-    if (!userId) {
-      return;
-    }
-
-    try {
-      setError(null);
-      const latest = await listChargersByHost(userId);
-      setChargers(latest);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to refresh host dashboard.");
-    }
-  }, [userId]);
-
-  const data = useMemo(() => {
-    const pendingBookings = bookings.filter((item) => item.status === "requested");
-    const activeSessions = bookings.filter(
-      (item) => item.status === "in_progress" || item.arrivalSignal === "charging"
-    );
-
-    const currentMonth = new Date().getMonth();
-    const currentYear = new Date().getFullYear();
-    const completedThisMonth = bookings.filter((item) => {
-      if (item.status !== "completed") {
-        return false;
-      }
-
-      const date = new Date(item.updatedAtIso);
-      return date.getMonth() === currentMonth && date.getFullYear() === currentYear;
-    });
-
-    const chargerById = Object.fromEntries(chargers.map((item) => [item.id, item]));
-
-    const estimatedRevenue = completedThisMonth.reduce((total, booking) => {
-      const charger = chargerById[booking.chargerId];
-      if (!charger) {
-        return total;
-      }
-
-      return total + booking.estimatedKWh * charger.pricingPerKwh;
-    }, 0);
-
-    return {
+  return {
+    data: {
       chargers,
       bookings,
       pendingBookings,
@@ -117,13 +62,11 @@ export function useHostDashboard(userId?: string) {
         activeSessions: activeSessions.length,
         completedThisMonth: completedThisMonth.length,
       },
-    };
-  }, [bookings, chargers]);
-
-  return {
-    data,
-    isLoading,
-    error,
-    refresh,
+    },
+    isLoading: chargersQuery.isLoading || bookingsQuery.isLoading,
+    error: chargersQuery.error?.message || bookingsQuery.error?.message || null,
+    refresh: async () => {
+      await Promise.all([chargersQuery.refetch(), bookingsQuery.refetch()]);
+    },
   };
 }

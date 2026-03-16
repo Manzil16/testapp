@@ -23,6 +23,18 @@ export default function AppLayout() {
           animation: "slide_from_right",
         }}
       />
+      <Stack.Screen
+        name="notifications"
+        options={{
+          animation: "slide_from_right",
+        }}
+      />
+      <Stack.Screen
+        name="session-history"
+        options={{
+          animation: "slide_from_right",
+        }}
+      />
     </Stack>
   );
 }

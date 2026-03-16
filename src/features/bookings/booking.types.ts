@@ -14,10 +14,13 @@ export interface Booking {
   startTimeIso: string;
   endTimeIso: string;
   estimatedKWh: number;
+  totalAmount: number;
+  platformFee: number;
   note: string;
   status: BookingStatus;
   arrivalSignal: "en_route" | "arrived" | "charging" | "departed";
   expiresAtIso?: string;
+  stripePaymentIntentId?: string;
   createdAtIso: string;
   updatedAtIso: string;
 }

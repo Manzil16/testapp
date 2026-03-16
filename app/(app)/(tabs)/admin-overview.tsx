@@ -1,16 +1,16 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   Alert,
   FlatList,
   Pressable,
-  RefreshControl,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
+import Animated from "react-native-reanimated";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AnimatedListItem,
   Avatar,
@@ -35,46 +35,26 @@ import {
 import { useAuth } from "@/src/features/auth/auth-context";
 import { useEntranceAnimation } from "@/src/hooks";
 import {
-  listenToChargers,
+  listChargers,
   updateChargerStatus,
+  deleteCharger,
   type Charger,
 } from "@/src/features/chargers";
 import {
-  listenToVerificationQueue,
-  type VerificationRequest,
+  listVerificationQueue,
 } from "@/src/features/verification";
-import { updateUserProfile, type AppRole } from "@/src/features/users";
-import { updateBookingStatus } from "@/src/features/bookings";
-import { db } from "@/src/firebaseConfig";
 import {
-  collection,
-  deleteDoc,
-  doc,
-  limit,
-  onSnapshot,
-  orderBy,
-  query,
-} from "firebase/firestore";
-import { useRefresh } from "@/src/hooks";
-
-interface BookingLite {
-  id: string;
-  chargerId: string;
-  driverUserId: string;
-  hostUserId: string;
-  status: string;
-  estimatedKWh: number;
-  startTimeIso?: string;
-  endTimeIso?: string;
-  updatedAt?: string;
-}
-
-interface UserLite {
-  id: string;
-  displayName: string;
-  email: string;
-  role: string;
-}
+  listAllProfiles,
+  deleteProfile,
+  updateUserProfile,
+  type AppRole,
+  type UserProfile,
+} from "@/src/features/users";
+import {
+  listAllBookings,
+  updateBookingStatus,
+  type Booking,
+} from "@/src/features/bookings";
 
 type AdminPanel = "users" | "chargers" | "bookings" | "revenue";
 type RevenueWindow = "week" | "month" | "all";
@@ -114,139 +94,48 @@ function isWithinWindow(isoDate: string | undefined, window: RevenueWindow): boo
 export default function AdminOverviewTabScreen() {
   const { profile } = useAuth();
   const entranceStyle = useEntranceAnimation();
-  const [chargers, setChargers] = useState<Charger[]>([]);
-  const [bookings, setBookings] = useState<BookingLite[]>([]);
-  const [users, setUsers] = useState<UserLite[]>([]);
-  const [verificationQueue, setVerificationQueue] = useState<VerificationRequest[]>([]);
+  const queryClient = useQueryClient();
+
   const [selectedPanel, setSelectedPanel] = useState<AdminPanel | null>(null);
   const [searchText, setSearchText] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   // Management sheets
-  const [selectedUser, setSelectedUser] = useState<UserLite | null>(null);
+  const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
   const [selectedCharger, setSelectedCharger] = useState<Charger | null>(null);
-  const [selectedBooking, setSelectedBooking] = useState<BookingLite | null>(null);
+  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
 
   // Filters
   const [bookingFilter, setBookingFilter] = useState<BookingFilter>("all");
   const [revenueWindow, setRevenueWindow] = useState<RevenueWindow>("all");
 
-  useEffect(() => {
-    let chargersReady = false;
-    let bookingsReady = false;
-    let usersReady = false;
-    let queueReady = false;
+  // ── Data queries ──
+  const chargersQuery = useQuery({
+    queryKey: ["chargers", "all"],
+    queryFn: () => listChargers(),
+  });
 
-    const markReady = () => {
-      if (chargersReady && bookingsReady && usersReady && queueReady) {
-        setIsLoading(false);
-      }
-    };
+  const bookingsQuery = useQuery({
+    queryKey: ["bookings", "all"],
+    queryFn: listAllBookings,
+  });
 
-    const unsubChargers = listenToChargers(
-      (items) => {
-        setChargers(items);
-        chargersReady = true;
-        markReady();
-      },
-      undefined,
-      (message) => {
-        setError(message);
-        chargersReady = true;
-        markReady();
-      }
-    );
+  const usersQuery = useQuery({
+    queryKey: ["profiles", "all"],
+    queryFn: listAllProfiles,
+  });
 
-    const bookingsQuery = query(
-      collection(db, "bookings"),
-      orderBy("updatedAt", "desc"),
-      limit(250)
-    );
+  useQuery({
+    queryKey: ["verifications", "queue"],
+    queryFn: listVerificationQueue,
+  });
 
-    const unsubBookings = onSnapshot(
-      bookingsQuery,
-      (snapshot) => {
-        setBookings(
-          snapshot.docs.map((item) => {
-            const data = item.data() as {
-              chargerId?: string;
-              driverUserId?: string;
-              hostUserId?: string;
-              status?: string;
-              estimatedKWh?: number;
-              startTime?: { toDate?: () => Date };
-              endTime?: { toDate?: () => Date };
-              updatedAt?: { toDate?: () => Date };
-            };
-
-            return {
-              id: item.id,
-              chargerId: data.chargerId || "",
-              driverUserId: data.driverUserId || "",
-              hostUserId: data.hostUserId || "",
-              status: data.status || "unknown",
-              estimatedKWh: data.estimatedKWh || 0,
-              startTimeIso: data.startTime?.toDate?.()?.toISOString?.(),
-              endTimeIso: data.endTime?.toDate?.()?.toISOString?.(),
-              updatedAt: data.updatedAt?.toDate?.()?.toISOString?.() || undefined,
-            };
-          })
-        );
-        bookingsReady = true;
-        markReady();
-      },
-      (err) => {
-        setError(err.message);
-        bookingsReady = true;
-        markReady();
-      }
-    );
-
-    const usersQuery = query(collection(db, "users"), limit(300));
-    const unsubUsers = onSnapshot(
-      usersQuery,
-      (snapshot) => {
-        setUsers(
-          snapshot.docs.map((item) => {
-            const data = item.data() as { displayName?: string; email?: string; role?: string };
-            return {
-              id: item.id,
-              displayName: data.displayName || "Unnamed user",
-              email: data.email || "No email",
-              role: data.role || "unknown",
-            };
-          })
-        );
-        usersReady = true;
-        markReady();
-      },
-      (err) => {
-        setError(err.message);
-        usersReady = true;
-        markReady();
-      }
-    );
-
-    const unsubQueue = listenToVerificationQueue((items) => {
-      setVerificationQueue(items);
-      queueReady = true;
-      markReady();
-    });
-
-    return () => {
-      unsubChargers();
-      unsubBookings();
-      unsubUsers();
-      unsubQueue();
-    };
-  }, []);
-
-  const refresh = async () => {
-    return;
-  };
-  const { refreshing, onRefresh } = useRefresh(refresh);
+  const chargers = useMemo(() => chargersQuery.data ?? [], [chargersQuery.data]);
+  const bookings = useMemo(() => bookingsQuery.data ?? [], [bookingsQuery.data]);
+  const users = useMemo(() => usersQuery.data ?? [], [usersQuery.data]);
+  const isLoading = chargersQuery.isLoading || bookingsQuery.isLoading || usersQuery.isLoading;
+  const error =
+    chargersQuery.error?.message || bookingsQuery.error?.message || usersQuery.error?.message || null;
 
   const chargerById = useMemo(
     () => Object.fromEntries(chargers.map((item) => [item.id, item])),
@@ -262,7 +151,7 @@ export default function AdminOverviewTabScreen() {
   const filteredCompletedBookings = useMemo(
     () =>
       bookings.filter(
-        (b) => b.status === "completed" && isWithinWindow(b.updatedAt, revenueWindow)
+        (b) => b.status === "completed" && isWithinWindow(b.updatedAtIso, revenueWindow)
       ),
     [bookings, revenueWindow]
   );
@@ -355,12 +244,20 @@ export default function AdminOverviewTabScreen() {
     });
   }, [chargers, normalizedSearch, userById]);
 
+  const invalidateAll = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ["chargers"] });
+    queryClient.invalidateQueries({ queryKey: ["bookings"] });
+    queryClient.invalidateQueries({ queryKey: ["profiles"] });
+    queryClient.invalidateQueries({ queryKey: ["verifications"] });
+  }, [queryClient]);
+
   // ── Admin Actions ──
   const handleChangeRole = useCallback(
     async (userId: string, newRole: AppRole) => {
       setActionLoading(true);
       try {
         await updateUserProfile(userId, { role: newRole });
+        invalidateAll();
         setSelectedUser(null);
       } catch (err) {
         Alert.alert("Error", err instanceof Error ? err.message : "Failed to update role.");
@@ -368,7 +265,7 @@ export default function AdminOverviewTabScreen() {
         setActionLoading(false);
       }
     },
-    []
+    [invalidateAll]
   );
 
   const handleDeleteUser = useCallback(async (userId: string) => {
@@ -380,7 +277,8 @@ export default function AdminOverviewTabScreen() {
         onPress: async () => {
           setActionLoading(true);
           try {
-            await deleteDoc(doc(db, "users", userId));
+            await deleteProfile(userId);
+            invalidateAll();
             setSelectedUser(null);
           } catch (err) {
             Alert.alert("Error", err instanceof Error ? err.message : "Failed to delete user.");
@@ -390,21 +288,22 @@ export default function AdminOverviewTabScreen() {
         },
       },
     ]);
-  }, []);
+  }, [invalidateAll]);
 
   const handleChargerAction = useCallback(
     async (chargerId: string, action: "approve" | "reject" | "suspend" | "remove") => {
       setActionLoading(true);
       try {
         if (action === "remove") {
-          await deleteDoc(doc(db, "chargers", chargerId));
+          await deleteCharger(chargerId);
         } else if (action === "approve") {
-          await updateChargerStatus(chargerId, "verified", 100);
+          await updateChargerStatus(chargerId, "approved", 100);
         } else if (action === "suspend") {
-          await updateChargerStatus(chargerId, "suspended", 10);
+          await updateChargerStatus(chargerId, "rejected", 10);
         } else {
           await updateChargerStatus(chargerId, "rejected", 0);
         }
+        invalidateAll();
         setSelectedCharger(null);
       } catch (err) {
         Alert.alert("Error", err instanceof Error ? err.message : "Failed to update charger.");
@@ -412,7 +311,7 @@ export default function AdminOverviewTabScreen() {
         setActionLoading(false);
       }
     },
-    []
+    [invalidateAll]
   );
 
   const handleBookingAction = useCallback(
@@ -420,6 +319,7 @@ export default function AdminOverviewTabScreen() {
       setActionLoading(true);
       try {
         await updateBookingStatus(bookingId, newStatus);
+        invalidateAll();
         setSelectedBooking(null);
       } catch (err) {
         Alert.alert("Error", err instanceof Error ? err.message : "Failed to update booking.");
@@ -427,19 +327,19 @@ export default function AdminOverviewTabScreen() {
         setActionLoading(false);
       }
     },
-    []
+    [invalidateAll]
   );
 
   const statusPillVariant = (status: string) => {
-    if (status === "verified" || status === "completed" || status === "approved") return "success" as const;
-    if (status === "pending_verification" || status === "requested") return "warning" as const;
-    if (status === "rejected" || status === "declined" || status === "cancelled" || status === "suspended")
+    if (status === "approved" || status === "completed") return "success" as const;
+    if (status === "pending" || status === "requested") return "warning" as const;
+    if (status === "rejected" || status === "declined" || status === "cancelled")
       return "error" as const;
     return "default" as const;
   };
 
   // ── Render helpers ──
-  const renderUserRow = ({ item, index }: { item: UserLite; index: number }) => (
+  const renderUserRow = ({ item, index }: { item: UserProfile; index: number }) => (
     <AnimatedListItem index={index}>
       <Pressable
         style={styles.adminCard}
@@ -482,7 +382,7 @@ export default function AdminOverviewTabScreen() {
               <Text style={styles.cardName}>{item.name}</Text>
               <Text style={styles.cardMeta}>{item.suburb}, {item.state}</Text>
             </View>
-            <InfoPill label={item.status.replace("_", " ")} variant={statusPillVariant(item.status)} />
+            <InfoPill label={item.status} variant={statusPillVariant(item.status)} />
           </View>
           <View style={styles.cardDetailsRow}>
             <View style={styles.cardDetailItem}>
@@ -503,7 +403,7 @@ export default function AdminOverviewTabScreen() {
     );
   };
 
-  const renderBookingRow = ({ item, index }: { item: BookingLite; index: number }) => {
+  const renderBookingRow = ({ item, index }: { item: Booking; index: number }) => {
     const charger = chargerById[item.chargerId];
     const chargerName = charger?.name || item.chargerId.slice(0, 8);
     const driverName = userById[item.driverUserId]?.displayName || item.driverUserId.slice(0, 8);
@@ -803,7 +703,7 @@ export default function AdminOverviewTabScreen() {
             <View style={styles.sheetRow}>
               <Text style={styles.sheetLabel}>Status</Text>
               <InfoPill
-                label={selectedCharger.status.replace("_", " ")}
+                label={selectedCharger.status}
                 variant={statusPillVariant(selectedCharger.status)}
               />
             </View>
@@ -826,7 +726,7 @@ export default function AdminOverviewTabScreen() {
               <SecondaryButton
                 label="Approve"
                 onPress={() => handleChargerAction(selectedCharger.id, "approve")}
-                disabled={selectedCharger.status === "verified" || actionLoading}
+                disabled={selectedCharger.status === "approved" || actionLoading}
                 style={styles.actionBtn}
               />
               <SecondaryButton
@@ -848,7 +748,7 @@ export default function AdminOverviewTabScreen() {
                   },
                 ])
               }
-              disabled={selectedCharger.status === "suspended" || actionLoading}
+              disabled={selectedCharger.status === "rejected" || actionLoading}
               style={{ marginTop: Spacing.xs }}
             />
             <PrimaryCTA
@@ -989,7 +889,6 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.sm,
     gap: Spacing.xs,
   },
-  // Card-based list items (matching host-bookings style)
   adminCard: {
     backgroundColor: Colors.surface,
     borderRadius: Radius.xl,

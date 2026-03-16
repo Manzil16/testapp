@@ -1,16 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
-import { Alert, StyleSheet, Text } from "react-native";
+import { Alert, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import {
   EmptyStateCard,
+  GradientButton,
+  InfoPill,
   InputField,
-  PrimaryCTA,
+  PremiumCard,
   ScreenContainer,
+  SectionTitle,
   Typography,
   Colors,
-  Radius,
-  Shadows,
   Spacing,
 } from "@/src/components";
 import { useAuth } from "@/src/features/auth/auth-context";
@@ -22,10 +23,10 @@ function toNumber(value: string, fallback: number) {
 }
 
 export default function VehicleProfileScreen() {
-  const { authUser, sessionUser } = useAuth();
+  const { user } = useAuth();
   const userId = useMemo(
-    () => authUser?.uid || sessionUser?.uid,
-    [authUser?.uid, sessionUser?.uid]
+    () => user?.id,
+    [user?.id]
   );
 
   const { data, isLoading, error, refresh, saveVehicle } = useVehicleProfile(userId);
@@ -101,41 +102,73 @@ export default function VehicleProfileScreen() {
           />
         ) : null}
 
-        <Animated.View entering={FadeInDown.duration(260)} style={styles.card}>
-          <InputField label="Make" value={make} onChangeText={setMake} />
-          <InputField label="Model" value={model} onChangeText={setModel} />
-          <InputField label="Year" value={year} onChangeText={setYear} keyboardType="numeric" />
-          <InputField
-            label="Battery Capacity (kWh)"
-            value={batteryCapacityKWh}
-            onChangeText={setBatteryCapacityKWh}
-            keyboardType="numeric"
-          />
-          <InputField
-            label="Range (km)"
-            value={maxRangeKm}
-            onChangeText={setMaxRangeKm}
-            keyboardType="numeric"
-          />
-          <InputField
-            label="Efficiency (Wh/km)"
-            value={efficiencyWhKm}
-            onChangeText={setEfficiencyWhKm}
-            keyboardType="numeric"
-          />
-          <InputField
-            label="Reserve %"
-            value={reservePercent}
-            onChangeText={setReservePercent}
-            keyboardType="numeric"
-          />
+        {data.primaryVehicle && (
+          <Animated.View entering={FadeInDown.duration(260)}>
+            <PremiumCard style={styles.section}>
+              <View style={styles.vehicleSummary}>
+                <Text style={styles.vehicleIcon}>🚗</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={Typography.cardTitle}>
+                    {data.primaryVehicle.make} {data.primaryVehicle.model}
+                  </Text>
+                  <Text style={Typography.caption}>{data.primaryVehicle.year}</Text>
+                </View>
+              </View>
+              <View style={styles.pillRow}>
+                <InfoPill label={`${data.primaryVehicle.batteryCapacityKWh} kWh`} variant="primary" />
+                <InfoPill label={`${data.primaryVehicle.maxRangeKm} km range`} variant="success" />
+                <InfoPill label={`${data.primaryVehicle.defaultReservePercent}% reserve`} />
+              </View>
+            </PremiumCard>
+          </Animated.View>
+        )}
 
-          <PrimaryCTA
-            label={isLoading ? "Loading..." : "Save Vehicle"}
-            onPress={save}
-            loading={saving}
-          />
+        <Animated.View entering={FadeInDown.delay(80).duration(260)}>
+          <PremiumCard style={styles.section}>
+            <SectionTitle title="Vehicle Details" topSpacing={Spacing.xs} />
+            <InputField label="Make" value={make} onChangeText={setMake} />
+            <InputField label="Model" value={model} onChangeText={setModel} />
+            <InputField label="Year" value={year} onChangeText={setYear} keyboardType="numeric" />
+          </PremiumCard>
         </Animated.View>
+
+        <Animated.View entering={FadeInDown.delay(140).duration(260)}>
+          <PremiumCard style={styles.section}>
+            <SectionTitle title="Battery & Efficiency" topSpacing={Spacing.xs} />
+            <InputField
+              label="Battery Capacity (kWh)"
+              value={batteryCapacityKWh}
+              onChangeText={setBatteryCapacityKWh}
+              keyboardType="numeric"
+            />
+            <InputField
+              label="Range (km)"
+              value={maxRangeKm}
+              onChangeText={setMaxRangeKm}
+              keyboardType="numeric"
+            />
+            <InputField
+              label="Efficiency (Wh/km)"
+              value={efficiencyWhKm}
+              onChangeText={setEfficiencyWhKm}
+              keyboardType="numeric"
+            />
+            <InputField
+              label="Reserve %"
+              value={reservePercent}
+              onChangeText={setReservePercent}
+              keyboardType="numeric"
+              hint="Battery percentage to keep in reserve during trips"
+            />
+          </PremiumCard>
+        </Animated.View>
+
+        <GradientButton
+          label={isLoading ? "Loading..." : "Save Vehicle"}
+          onPress={save}
+          loading={saving}
+          style={styles.saveBtn}
+        />
       </ScreenContainer>
     </SafeAreaView>
   );
@@ -146,11 +179,25 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.background,
   },
-  card: {
-    marginTop: Spacing.md,
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.card,
-    padding: Spacing.cardPadding,
-    ...Shadows.card,
+  section: {
+    marginBottom: Spacing.md,
+  },
+  vehicleSummary: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.md,
+  },
+  vehicleIcon: {
+    fontSize: 36,
+  },
+  pillRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: Spacing.xs,
+    marginTop: Spacing.sm,
+  },
+  saveBtn: {
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.xxl,
   },
 });

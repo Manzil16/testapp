@@ -19,7 +19,6 @@ import {
   PressableScale,
   ScreenContainer,
   SectionTitle,
-  StatCardSkeleton,
   Typography,
   Colors,
   Radius,
@@ -38,12 +37,12 @@ function getGreeting(): string {
 
 export default function DriverHomeScreen() {
   const router = useRouter();
-  const { authUser, sessionUser, profile } = useAuth();
+  const { user, profile } = useAuth();
   const entranceStyle = useEntranceAnimation();
 
   const userId = useMemo(
-    () => authUser?.uid || sessionUser?.uid,
-    [authUser?.uid, sessionUser?.uid]
+    () => user?.id,
+    [user?.id]
   );
 
   const { data, isLoading, error, refresh } = useDriverDashboard(userId);
@@ -72,7 +71,7 @@ export default function DriverHomeScreen() {
                 {/* Hero Header */}
                 <Animated.View entering={FadeIn.duration(400)}>
                   <LinearGradient
-                    colors={["#1DB954", "#15803d"]}
+                    colors={[...Colors.gradientHero]}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 1 }}
                     style={styles.heroGradient}
@@ -171,7 +170,7 @@ export default function DriverHomeScreen() {
                     { icon: "search", label: "Discover", route: "/(app)/(tabs)/discover", color: Colors.primary, bg: Colors.primaryLight },
                     { icon: "map", label: "Plan Trip", route: "/(app)/(tabs)/trip", color: Colors.info, bg: Colors.infoLight },
                     { icon: "calendar", label: "Bookings", route: "/(app)/(tabs)/bookings", color: Colors.warning, bg: Colors.warningLight },
-                    { icon: "person", label: "Profile", route: "/(app)/(tabs)/profile", color: "#8B5CF6", bg: "#EDE9FE" },
+                    { icon: "person", label: "Profile", route: "/(app)/(tabs)/profile", color: Colors.info, bg: Colors.infoLight },
                   ].map((action) => (
                     <PressableScale
                       key={action.label}
@@ -279,6 +278,7 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "#FFFFFF",
     letterSpacing: -0.5,
+    fontFamily: "Syne_700Bold",
   },
   heroStatsRow: {
     flexDirection: "row",
