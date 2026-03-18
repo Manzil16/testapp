@@ -149,9 +149,10 @@ export default function TripPlannerScreen() {
           />
 
           <PrimaryCTA
-            label={isPlanning ? "Calculating..." : "Save Trip"}
+            label={isPlanning ? "Calculating..." : "Plan & Save Trip"}
             onPress={actions.planTrip}
             loading={isPlanning}
+            disabled={!data.origin || !data.destination}
           />
         </Animated.View>
 

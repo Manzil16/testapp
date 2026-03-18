@@ -1,7 +1,6 @@
 import { supabase } from "../../lib/supabase";
+import { AppConfig } from "../../constants/app";
 import type { Booking, BookingStatus, CreateBookingInput } from "./booking.types";
-
-const BOOKING_EXPIRY_MS = 24 * 60 * 60 * 1000;
 
 function mapRow(row: Record<string, unknown>): Booking {
   const createdAt = row.created_at as string;
@@ -53,8 +52,8 @@ export async function createBookingRequest(input: CreateBookingInput): Promise<s
 
   const pricePerKwh = Number(charger.data.price_per_kwh);
   const totalAmount = pricePerKwh * input.estimatedKWh;
-  const platformFee = totalAmount * 0.2;
-  const expiresAt = new Date(Date.now() + BOOKING_EXPIRY_MS).toISOString();
+  const platformFee = totalAmount * (AppConfig.PLATFORM_FEE_PERCENT / 100);
+  const expiresAt = new Date(Date.now() + AppConfig.BOOKING_EXPIRY_MS).toISOString();
 
   const { data, error } = await supabase
     .from("bookings")

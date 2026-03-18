@@ -23,20 +23,18 @@ import {
   Shadows,
   Spacing,
 } from "@/src/components";
+import { useThemeColors } from "@/src/hooks/useThemeColors";
 import { useAuth } from "@/src/features/auth/auth-context";
 import { useAvatarUpload, useBadgeCounts, useDriverDashboard, useEntranceAnimation, useSettings } from "@/src/hooks";
+import { useAchievements } from "@/src/hooks/useAchievements";
+import { AppConfig } from "@/src/constants/app";
 import type { AppRole } from "@/src/features/users";
 import type { CurrencyCode } from "@/src/hooks/useSettings";
 
 const roleOptions: AppRole[] = ["driver", "host", "admin"];
 const CURRENCY_OPTIONS: CurrencyCode[] = ["AUD", "USD", "EUR", "GBP", "NZD"];
 
-const ACHIEVEMENTS = [
-  { id: "first_charge", icon: "⚡", label: "First Charge", desc: "Completed your first session" },
-  { id: "100kwh", icon: "🔋", label: "100 kWh Club", desc: "Charged 100+ kWh total" },
-  { id: "5_trips", icon: "🗺️", label: "Road Warrior", desc: "Planned 5+ trips" },
-  { id: "reviewer", icon: "⭐", label: "Top Reviewer", desc: "Left 3+ reviews" },
-];
+// Achievements are now computed from real DB data via useAchievements hook
 
 export default function ProfileScreen() {
   const { focusField } = useLocalSearchParams<{ focusField?: string }>();
@@ -44,15 +42,17 @@ export default function ProfileScreen() {
   const entranceStyle = useEntranceAnimation();
   const settings = useSettings();
   const { markProfileSeen } = useBadgeCounts();
+  const colors = useThemeColors();
 
   const userId = useMemo(() => user?.id, [user?.id]);
 
   const { pickAndUpload, uploading, progress } = useAvatarUpload(userId);
   const { data } = useDriverDashboard(userId);
+  const { achievements } = useAchievements(userId);
 
   const [displayName, setDisplayName] = useState("");
   const [phone, setPhone] = useState("");
-  const [reservePercent, setReservePercent] = useState("12");
+  const [reservePercent, setReservePercent] = useState(String(AppConfig.VEHICLE_DEFAULTS.reservePercent));
   const [role, setRole] = useState<AppRole>("driver");
   const [saving, setSaving] = useState(false);
 
@@ -79,7 +79,7 @@ export default function ProfileScreen() {
     setDisplayName(profile.displayName || "");
     setPhone(profile.phone || "");
     setRole(profile.role);
-    setReservePercent(String(profile.preferredReservePercent ?? 12));
+    setReservePercent(String(profile.preferredReservePercent ?? AppConfig.VEHICLE_DEFAULTS.reservePercent));
   }, [profile]);
 
   useFocusEffect(
@@ -106,7 +106,7 @@ export default function ProfileScreen() {
         phone: phone.trim(),
         preferredReservePercent:
           profile.role === "driver"
-            ? Math.max(5, Math.min(40, Number(reservePercent) || 12))
+            ? Math.max(AppConfig.VEHICLE_DEFAULTS.bounds.minReservePercent, Math.min(AppConfig.VEHICLE_DEFAULTS.bounds.maxReservePercent, Number(reservePercent) || AppConfig.VEHICLE_DEFAULTS.reservePercent))
             : undefined,
         role: devToggleUnlocked ? role : undefined,
       });
@@ -161,7 +161,7 @@ export default function ProfileScreen() {
 
   const handleVersionTap = () => {
     const next = devTapCount + 1;
-    if (next >= 7) {
+    if (next >= AppConfig.DEV_TAP_COUNT) {
       setDevToggleUnlocked(true);
       setDevTapCount(0);
       Alert.alert("Developer toggle enabled", "Role switcher is now visible for this session.");
@@ -172,7 +172,7 @@ export default function ProfileScreen() {
 
   if (!profile) {
     return (
-      <SafeAreaView style={styles.safe} edges={["bottom"]}>
+      <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={["bottom"]}>
         <ScreenContainer>
           <EmptyStateCard
             icon="👤"
@@ -185,7 +185,7 @@ export default function ProfileScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safe} edges={["bottom"]}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={["bottom"]}>
       <Animated.View style={[{ flex: 1 }, entranceStyle]}>
         <ScreenContainer>
           {/* Header with gradient */}
@@ -240,10 +240,15 @@ export default function ProfileScreen() {
           <Animated.View entering={FadeInDown.delay(80).duration(350)}>
             <SectionTitle title="Achievements" subtitle="Milestones on your journey" />
             <View style={styles.achievementsRow}>
-              {ACHIEVEMENTS.map((a) => (
-                <View key={a.id} style={styles.achievementCard}>
+              {achievements.map((a) => (
+                <View key={a.id} style={[styles.achievementCard, !a.earned && styles.achievementLocked]}>
                   <Text style={styles.achievementIcon}>{a.icon}</Text>
                   <Text style={styles.achievementLabel}>{a.label}</Text>
+                  {a.progress ? (
+                    <Text style={styles.achievementProgress}>{a.progress}</Text>
+                  ) : a.earned ? (
+                    <Text style={styles.achievementEarned}>Earned</Text>
+                  ) : null}
                 </View>
               ))}
             </View>
@@ -252,7 +257,7 @@ export default function ProfileScreen() {
           {/* Account Details */}
           <Animated.View entering={FadeInDown.delay(150).duration(350)}>
             <PremiumCard style={styles.formSection}>
-              <Text style={styles.sectionLabel}>Account Details</Text>
+              <Text style={[styles.sectionLabel, { color: colors.textPrimary }]}>Account Details</Text>
 
               <InputField
                 label="Display Name"
@@ -310,7 +315,7 @@ export default function ProfileScreen() {
           {/* Settings */}
           <Animated.View entering={FadeInDown.delay(220).duration(350)}>
             <PremiumCard style={styles.settingsSection}>
-              <Text style={styles.sectionLabel}>Settings</Text>
+              <Text style={[styles.sectionLabel, { color: colors.textPrimary }]}>Settings</Text>
 
               {/* Push Notifications */}
               <PressableScale onPress={settings.toggleNotifications} style={styles.settingsRow}>
@@ -473,7 +478,7 @@ export default function ProfileScreen() {
           <TouchableOpacity style={styles.versionRow} onPress={handleVersionTap} activeOpacity={0.8}>
             <Text style={styles.versionText}>VehicleGrid v{version}</Text>
             {!devToggleUnlocked ? (
-              <Text style={styles.versionHint}>{Math.max(0, 7 - devTapCount)} taps to dev mode</Text>
+              <Text style={styles.versionHint}>{Math.max(0, AppConfig.DEV_TAP_COUNT - devTapCount)} taps to dev mode</Text>
             ) : (
               <Text style={styles.versionHint}>Dev mode enabled</Text>
             )}
@@ -588,11 +593,30 @@ const styles = StyleSheet.create({
     fontSize: 24,
     marginBottom: 4,
   },
+  achievementLocked: {
+    opacity: 0.45,
+  },
   achievementLabel: {
     fontSize: 10,
     fontWeight: "600",
     color: Colors.textSecondary,
     textAlign: "center",
+    fontFamily: "DMSans_600SemiBold",
+  },
+  achievementProgress: {
+    fontSize: 9,
+    fontWeight: "500",
+    color: Colors.textMuted,
+    textAlign: "center",
+    marginTop: 2,
+    fontFamily: "DMSans_500Medium",
+  },
+  achievementEarned: {
+    fontSize: 9,
+    fontWeight: "600",
+    color: Colors.accent,
+    textAlign: "center",
+    marginTop: 2,
     fontFamily: "DMSans_600SemiBold",
   },
 

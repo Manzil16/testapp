@@ -1,74 +1,86 @@
-// VehicleGrid Design System — Premium Dark-First Theme
+// VehicleGrid Design System — Light-only Theme
 // Single source of truth for all styling
 
+// ─── Light Theme Colors ─────────────────────────────────────────
 export const Colors = {
-  // Core backgrounds (dark-first)
-  background: "#0F0F12",
-  surface: "#1A1A22",
-  surfaceAlt: "#22222E",
-  surfaceElevated: "#2A2A38",
+  // Core backgrounds
+  background: "#F5F5F5",
+  surface: "#FFFFFF",
+  surfaceAlt: "#F0F1F4",
+  surfaceElevated: "#FFFFFF",
 
-  // Brand / Accent
-  accent: "#00E5CC",
-  accentDark: "#00B8A3",
-  accentLight: "rgba(0, 229, 204, 0.12)",
-  accentGlow: "rgba(0, 229, 204, 0.25)",
+  // Brand / Accent (teal)
+  accent: "#00BFA5",
+  accentDark: "#009E88",
+  accentLight: "rgba(0, 191, 165, 0.10)",
+  accentGlow: "rgba(0, 191, 165, 0.18)",
 
   // Legacy alias
-  primary: "#00E5CC",
-  primaryDark: "#00B8A3",
-  primaryLight: "rgba(0, 229, 204, 0.12)",
+  primary: "#00BFA5",
+  primaryDark: "#009E88",
+  primaryLight: "rgba(0, 191, 165, 0.10)",
 
   // Text
-  textPrimary: "#F5F5F0",
-  textSecondary: "#A0A0B0",
-  textMuted: "#6B6B80",
-  textInverse: "#0F0F12",
+  textPrimary: "#111111",
+  textSecondary: "#666666",
+  textMuted: "#8E8EA0",
+  textInverse: "#FFFFFF",
 
   // Borders
-  border: "rgba(255, 255, 255, 0.08)",
-  borderFocus: "#00E5CC",
-  borderSubtle: "rgba(255, 255, 255, 0.04)",
+  border: "#E0E0E0",
+  borderFocus: "#00BFA5",
+  borderSubtle: "rgba(0, 0, 0, 0.04)",
 
   // Semantic
-  success: "#34D399",
-  successLight: "rgba(52, 211, 153, 0.12)",
-  warning: "#FBBF24",
-  warningLight: "rgba(251, 191, 36, 0.12)",
-  error: "#FF4757",
-  errorLight: "rgba(255, 71, 87, 0.12)",
-  info: "#60A5FA",
-  infoLight: "rgba(96, 165, 250, 0.12)",
+  success: "#10B981",
+  successLight: "rgba(16, 185, 129, 0.10)",
+  warning: "#F59E0B",
+  warningLight: "rgba(245, 158, 11, 0.10)",
+  error: "#EF4444",
+  errorLight: "rgba(239, 68, 68, 0.10)",
+  info: "#3B82F6",
+  infoLight: "rgba(59, 130, 246, 0.10)",
 
   // Map
-  mapAvailable: "#34D399",
-  mapBusy: "#FBBF24",
-  mapOffline: "#FF4757",
+  mapAvailable: "#10B981",
+  mapBusy: "#F59E0B",
+  mapOffline: "#EF4444",
 
   // Badges
-  topRatedLight: "rgba(251, 191, 36, 0.12)",
+  topRatedLight: "rgba(245, 158, 11, 0.10)",
 
   // Shadow & Overlay
-  shadow: "rgba(0, 0, 0, 0.3)",
-  shadowStrong: "rgba(0, 0, 0, 0.5)",
-  overlay: "rgba(0, 0, 0, 0.6)",
+  shadow: "rgba(0, 0, 0, 0.08)",
+  shadowStrong: "rgba(0, 0, 0, 0.15)",
+  overlay: "rgba(0, 0, 0, 0.4)",
 
   // Glassmorphism
-  glass: "rgba(255, 255, 255, 0.05)",
-  glassBorder: "rgba(255, 255, 255, 0.08)",
+  glass: "rgba(0, 0, 0, 0.03)",
+  glassBorder: "rgba(0, 0, 0, 0.06)",
 
   // Gradients (as arrays for LinearGradient)
-  gradientAccent: ["#00E5CC", "#00B4D8"] as const,
-  gradientDark: ["#1A1A22", "#0F0F12"] as const,
-  gradientCard: ["rgba(255,255,255,0.06)", "rgba(255,255,255,0.02)"] as const,
-  gradientHero: ["#00E5CC", "#00B4D8", "#0077B6"] as const,
+  gradientAccent: ["#00BFA5", "#00A3D8"] as const,
+  gradientDark: ["#F0F1F4", "#F5F5F5"] as const,
+  gradientCard: ["rgba(0,0,0,0.02)", "rgba(0,0,0,0.01)"] as const,
+  gradientHero: ["#00BFA5", "#00A3D8", "#0077B6"] as const,
 
   // Legacy backward compat
-  card: "#1A1A22",
-  text: "#F5F5F0",
-  muted: "#A0A0B0",
-  danger: "#FF4757",
+  card: "#FFFFFF",
+  text: "#111111",
+  muted: "#666666",
+  danger: "#EF4444",
 } as const;
+
+// ─── Color scheme type ───
+export type ColorScheme = { [K in keyof typeof Colors]: (typeof Colors)[K] extends readonly string[] ? readonly string[] : string };
+
+// ─── LightColors kept as alias for backward compatibility ───
+export const LightColors: ColorScheme = Colors;
+
+/** Returns the light color palette (isDark param kept for API compat) */
+export function getColors(_isDark?: boolean): ColorScheme {
+  return Colors;
+}
 
 export const Typography = {
   pageTitle: {
@@ -164,35 +176,35 @@ export const Shadows = {
   card: {
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
+    shadowOpacity: 0.08,
     shadowRadius: 12,
     elevation: 4,
   },
   modal: {
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.25,
+    shadowOpacity: 0.15,
     shadowRadius: 24,
     elevation: 12,
   },
   button: {
-    shadowColor: "#00E5CC",
+    shadowColor: "#00BFA5",
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.25,
     shadowRadius: 12,
     elevation: 6,
   },
   glow: {
-    shadowColor: "#00E5CC",
+    shadowColor: "#00BFA5",
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.2,
+    shadowOpacity: 0.15,
     shadowRadius: 20,
     elevation: 8,
   },
   subtle: {
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
+    shadowOpacity: 0.06,
     shadowRadius: 6,
     elevation: 2,
   },
@@ -212,12 +224,12 @@ export const RoleTheme = {
     label: "Driver",
   },
   host: {
-    accent: "#60A5FA",
+    accent: "#3B82F6",
     tabIcon: "flash" as const,
     label: "Host",
   },
   admin: {
-    accent: "#FBBF24",
+    accent: "#F59E0B",
     tabIcon: "shield-checkmark" as const,
     label: "Admin",
   },

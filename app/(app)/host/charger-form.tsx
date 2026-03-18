@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   Alert,
   Image,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -26,14 +27,18 @@ import {
 } from "@/src/components";
 import { useAuth } from "@/src/features/auth/auth-context";
 import { type AvailabilityDay, type ConnectorType } from "@/src/features/chargers";
-import { useHostChargers } from "@/src/hooks";
+import { useHostChargers, usePricingAssistant } from "@/src/hooks";
+import { useThemeColors } from "@/src/hooks/useThemeColors";
+import { AppConfig } from "@/src/constants/app";
 import {
   pickAndUploadChargerImage,
   captureAndUploadChargerImage,
   deleteChargerImage,
+  ensurePublicUrl,
 } from "@/src/services/imageService";
+import { searchAddress, type GeoResult } from "@/src/services/geocodingService";
 
-const MAX_PHOTOS = 6;
+const MAX_PHOTOS = AppConfig.CHARGER_DEFAULTS.maxPhotos;
 const connectorOptions: ConnectorType[] = ["Type2", "CCS2", "CHAdeMO", "Tesla"];
 const amenityOptions = ["WiFi", "Parking", "Restroom", "Cafe", "CCTV", "Lighting"];
 const weekdays: AvailabilityDay[] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -53,6 +58,7 @@ export default function HostChargerFormScreen() {
     [user?.id]
   );
 
+  const colors = useThemeColors();
   const { error, actions } = useHostChargers(userId);
 
   const [loading, setLoading] = useState(Boolean(chargerId));
@@ -64,24 +70,32 @@ export default function HostChargerFormScreen() {
   const [suburb, setSuburb] = useState("");
   const [stateCode, setStateCode] = useState("NSW");
 
-  const [latitude, setLatitude] = useState(-33.8688);
-  const [longitude, setLongitude] = useState(151.2093);
+  const [latitude, setLatitude] = useState<number>(AppConfig.DEFAULT_REGION.latitude);
+  const [longitude, setLongitude] = useState<number>(AppConfig.DEFAULT_REGION.longitude);
 
-  const [powerKw, setPowerKw] = useState("22");
-  const [pricePerKwh, setPricePerKwh] = useState("0.55");
+  const [powerKw, setPowerKw] = useState(String(AppConfig.CHARGER_DEFAULTS.powerKw));
+  const [pricePerKwh, setPricePerKwh] = useState(String(AppConfig.CHARGER_DEFAULTS.pricePerKwh));
   const [selectedConnectors, setSelectedConnectors] = useState<ConnectorType[]>(["Type2"]);
   const [selectedAmenities, setSelectedAmenities] = useState<string[]>([]);
 
   const [availabilityDays, setAvailabilityDays] = useState<Record<AvailabilityDay, boolean>>(
     Object.fromEntries(weekdays.map((day) => [day, true])) as Record<AvailabilityDay, boolean>
   );
-  const [fromTime, setFromTime] = useState("06:00");
-  const [toTime, setToTime] = useState("22:00");
+  const [fromTime, setFromTime] = useState<string>(AppConfig.CHARGER_DEFAULTS.defaultStartTime);
+  const [toTime, setToTime] = useState<string>(AppConfig.CHARGER_DEFAULTS.defaultEndTime);
+
+  const pricingSuggestion = usePricingAssistant(parseNumber(powerKw, AppConfig.CHARGER_DEFAULTS.powerKw));
 
   // Photo upload state
   const [images, setImages] = useState<string[]>([]);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [uploading, setUploading] = useState(false);
+
+  // Address autocomplete state
+  const [addressSuggestions, setAddressSuggestions] = useState<GeoResult[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mapRef = useRef<MapView>(null);
 
   useEffect(() => {
     if (!chargerId) {
@@ -108,7 +122,7 @@ export default function HostChargerFormScreen() {
         setSelectedConnectors(charger.connectors.map((item) => item.type));
         setSelectedAmenities(charger.amenities);
         if (charger.images) {
-          setImages(charger.images);
+          setImages(charger.images.map((img) => ensurePublicUrl(img)));
         }
         if (charger.availabilityWindow) {
           const availableDays = new Set(charger.availabilityWindow.days);
@@ -215,6 +229,119 @@ export default function HostChargerFormScreen() {
     ]);
   };
 
+  // Address autocomplete — debounced search
+  const handleAddressChange = useCallback((text: string) => {
+    setAddress(text);
+
+    if (searchTimerRef.current) {
+      clearTimeout(searchTimerRef.current);
+    }
+
+    if (text.trim().length < 3) {
+      setAddressSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+
+    searchTimerRef.current = setTimeout(async () => {
+      try {
+        const results = await searchAddress(text, {
+          nearLatitude: latitude,
+          nearLongitude: longitude,
+        });
+        setAddressSuggestions(results);
+        setShowSuggestions(results.length > 0);
+      } catch {
+        setAddressSuggestions([]);
+        setShowSuggestions(false);
+      }
+    }, 300);
+  }, [latitude, longitude]);
+
+  const handleSelectSuggestion = useCallback((result: GeoResult) => {
+    setAddress(result.primaryText);
+    setShowSuggestions(false);
+    setAddressSuggestions([]);
+
+    // Parse suburb and state from secondaryText (e.g. "Hurstville, New South Wales, 2220")
+    if (result.secondaryText) {
+      const parts = result.secondaryText.split(",").map((s) => s.trim());
+      if (parts[0]) setSuburb(parts[0]);
+      if (parts[1]) {
+        // Convert full state name to abbreviation
+        const stateMap: Record<string, string> = {
+          "New South Wales": "NSW",
+          "Victoria": "VIC",
+          "Queensland": "QLD",
+          "Western Australia": "WA",
+          "South Australia": "SA",
+          "Tasmania": "TAS",
+          "Northern Territory": "NT",
+          "Australian Capital Territory": "ACT",
+        };
+        setStateCode(stateMap[parts[1]] || parts[1]);
+      }
+    }
+
+    // Move map pin
+    setLatitude(result.latitude);
+    setLongitude(result.longitude);
+    mapRef.current?.animateToRegion({
+      latitude: result.latitude,
+      longitude: result.longitude,
+      latitudeDelta: 0.02,
+      longitudeDelta: 0.02,
+    }, 300);
+  }, []);
+
+  // Reverse geocode when map is tapped
+  const handleMapPress = useCallback(async (event: { nativeEvent: { coordinate: { latitude: number; longitude: number } } }) => {
+    const { latitude: lat, longitude: lng } = event.nativeEvent.coordinate;
+    setLatitude(lat);
+    setLongitude(lng);
+
+    try {
+      // Use Nominatim reverse geocoding
+      const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&addressdetails=1`;
+      const response = await fetch(url, {
+        headers: {
+          "User-Agent": "VehicleGrid-App/1.0 (vehiclegrid-app)",
+          "Accept-Language": "en-AU,en;q=0.9",
+        },
+      });
+      if (!response.ok) return;
+
+      const data = await response.json();
+      const addr = data.address;
+      if (!addr) return;
+
+      const road = addr.road;
+      const houseNumber = addr.house_number;
+      const streetAddress = houseNumber && road ? `${houseNumber} ${road}` : road || "";
+
+      if (streetAddress) setAddress(streetAddress);
+
+      const locality = addr.suburb || addr.city || addr.town || addr.village;
+      if (locality) setSuburb(locality);
+
+      if (addr.state) {
+        const stateMap: Record<string, string> = {
+          "New South Wales": "NSW",
+          "Victoria": "VIC",
+          "Queensland": "QLD",
+          "Western Australia": "WA",
+          "South Australia": "SA",
+          "Tasmania": "TAS",
+          "Northern Territory": "NT",
+          "Australian Capital Territory": "ACT",
+        };
+        setStateCode(stateMap[addr.state] || addr.state);
+      }
+    } catch {
+      // Reverse geocoding is best-effort
+    }
+  }, []);
+
   const save = async () => {
     if (!userId) {
       Alert.alert("Host", "You must be signed in.");
@@ -258,11 +385,11 @@ export default function HostChargerFormScreen() {
           state: stateCode.trim().toUpperCase(),
           latitude,
           longitude,
-          maxPowerKw: Math.max(7, parseNumber(powerKw, 22)),
-          pricingPerKwh: Math.max(0.2, parseNumber(pricePerKwh, 0.55)),
+          maxPowerKw: Math.max(AppConfig.CHARGER_DEFAULTS.minPowerKw, parseNumber(powerKw, AppConfig.CHARGER_DEFAULTS.powerKw)),
+          pricingPerKwh: Math.max(AppConfig.CHARGER_DEFAULTS.minPricePerKwh, parseNumber(pricePerKwh, AppConfig.CHARGER_DEFAULTS.pricePerKwh)),
           connectors: selectedConnectors.map((type) => ({
             type,
-            powerKw: Math.max(7, parseNumber(powerKw, 22)),
+            powerKw: Math.max(AppConfig.CHARGER_DEFAULTS.minPowerKw, parseNumber(powerKw, AppConfig.CHARGER_DEFAULTS.powerKw)),
             count: 1,
           })),
           amenities: selectedAmenities,
@@ -287,7 +414,7 @@ export default function HostChargerFormScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.safe} edges={["bottom"]}>
+      <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={["bottom"]}>
         <ScreenContainer>
           <EmptyStateCard icon="⏳" title="Loading charger" message="Preparing form..." />
         </ScreenContainer>
@@ -296,7 +423,7 @@ export default function HostChargerFormScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safe} edges={["bottom"]}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={["bottom"]}>
       <ScreenContainer>
         <Animated.View entering={FadeIn.duration(220)}>
           <Text style={Typography.pageTitle}>{chargerId ? "Edit Charger" : "Add Charger"}</Text>
@@ -315,18 +442,22 @@ export default function HostChargerFormScreen() {
 
             {images.length > 0 ? (
               <View style={styles.photoGrid}>
-                {images.map((uri, index) => (
-                  <View key={uri} style={styles.photoThumb}>
-                    <Image source={{ uri }} style={styles.thumbImage} />
-                    <Pressable
-                      style={styles.deleteBtn}
-                      onPress={() => handleDeletePhoto(index)}
-                      hitSlop={8}
-                    >
-                      <Text style={styles.deleteBtnText}>✕</Text>
-                    </Pressable>
-                  </View>
-                ))}
+                {images.map((uri, index) => {
+                  const safeUri = ensurePublicUrl(uri);
+
+                  return (
+                    <View key={uri} style={styles.photoThumb}>
+                      <Image source={{ uri: safeUri }} style={styles.thumbImage} />
+                      <Pressable
+                        style={styles.deleteBtn}
+                        onPress={() => handleDeletePhoto(index)}
+                        hitSlop={8}
+                      >
+                        <Text style={styles.deleteBtnText}>✕</Text>
+                      </Pressable>
+                    </View>
+                  );
+                })}
                 {images.length < MAX_PHOTOS && (
                   <Pressable style={styles.addPhotoBtn} onPress={handleAddPhoto}>
                     <Text style={styles.addPhotoIcon}>+</Text>
@@ -373,12 +504,41 @@ export default function HostChargerFormScreen() {
         <Animated.View entering={FadeInDown.delay(120).duration(260)}>
           <PremiumCard style={styles.section}>
             <SectionTitle title="Location" topSpacing={Spacing.xs} />
-            <InputField label="Address" value={address} onChangeText={setAddress} />
+            <View>
+              <InputField label="Address" value={address} onChangeText={handleAddressChange} />
+              {showSuggestions && addressSuggestions.length > 0 && (
+                <View style={styles.suggestionsWrap}>
+                  <ScrollView
+                    keyboardShouldPersistTaps="handled"
+                    nestedScrollEnabled
+                    style={styles.suggestionsList}
+                  >
+                    {addressSuggestions.map((result, index) => (
+                      <Pressable
+                        key={`${result.latitude}-${result.longitude}-${index}`}
+                        style={styles.suggestionRow}
+                        onPress={() => handleSelectSuggestion(result)}
+                      >
+                        <Text style={styles.suggestionPrimary} numberOfLines={1}>
+                          {result.primaryText}
+                        </Text>
+                        {result.secondaryText ? (
+                          <Text style={styles.suggestionSecondary} numberOfLines={1}>
+                            {result.secondaryText}
+                          </Text>
+                        ) : null}
+                      </Pressable>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
+            </View>
             <InputField label="Suburb" value={suburb} onChangeText={setSuburb} />
             <InputField label="State" value={stateCode} onChangeText={setStateCode} />
 
             <View style={styles.mapWrap}>
               <MapView
+                ref={mapRef}
                 style={styles.map}
                 initialRegion={{
                   latitude,
@@ -386,10 +546,7 @@ export default function HostChargerFormScreen() {
                   latitudeDelta: 0.08,
                   longitudeDelta: 0.08,
                 }}
-                onPress={(event) => {
-                  setLatitude(event.nativeEvent.coordinate.latitude);
-                  setLongitude(event.nativeEvent.coordinate.longitude);
-                }}
+                onPress={handleMapPress}
               >
                 <Marker coordinate={{ latitude, longitude }} />
               </MapView>
@@ -415,7 +572,19 @@ export default function HostChargerFormScreen() {
               value={pricePerKwh}
               onChangeText={setPricePerKwh}
               keyboardType="numeric"
+              hint={`Market range: $${pricingSuggestion.minPrice.toFixed(2)}-$${pricingSuggestion.maxPrice.toFixed(2)}/kWh`}
             />
+            <Pressable
+              style={styles.pricingSuggestion}
+              onPress={() => setPricePerKwh(String(pricingSuggestion.suggestedPrice))}
+            >
+              <View style={styles.pricingSuggestionHeader}>
+                <Text style={styles.pricingSuggestionIcon}>💡</Text>
+                <Text style={styles.pricingSuggestionTitle}>Suggested: ${pricingSuggestion.suggestedPrice.toFixed(2)}/kWh</Text>
+              </View>
+              <Text style={styles.pricingSuggestionBody}>{pricingSuggestion.reasoning}</Text>
+              <Text style={styles.pricingSuggestionTap}>Tap to apply</Text>
+            </Pressable>
             <Text style={styles.inlineLabel}>Connector Types</Text>
             <View style={styles.chipWrap}>
               {connectorOptions.map((option) => (
@@ -510,6 +679,42 @@ const styles = StyleSheet.create({
   inlineLabel: {
     ...Typography.label,
     marginBottom: Spacing.sm,
+  },
+  pricingSuggestion: {
+    backgroundColor: Colors.accentLight,
+    borderRadius: Radius.lg,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.accent,
+  },
+  pricingSuggestionHeader: {
+    flexDirection: "row" as const,
+    alignItems: "center" as const,
+    gap: Spacing.sm,
+    marginBottom: Spacing.xs,
+  },
+  pricingSuggestionIcon: {
+    fontSize: 16,
+  },
+  pricingSuggestionTitle: {
+    fontSize: 14,
+    fontWeight: "700" as const,
+    color: Colors.accent,
+    fontFamily: "DMSans_700Bold",
+  },
+  pricingSuggestionBody: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    lineHeight: 16,
+    fontFamily: "DMSans_400Regular",
+  },
+  pricingSuggestionTap: {
+    fontSize: 11,
+    color: Colors.accent,
+    fontWeight: "600" as const,
+    marginTop: Spacing.xs,
+    fontFamily: "DMSans_600SemiBold",
   },
   timeRow: {
     flexDirection: "row",
@@ -627,5 +832,37 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     marginTop: Spacing.sm,
     textAlign: "right",
+  },
+
+  // Address autocomplete suggestions
+  suggestionsWrap: {
+    backgroundColor: Colors.surfaceElevated,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    marginTop: -Spacing.sm,
+    marginBottom: Spacing.md,
+    overflow: "hidden",
+  },
+  suggestionsList: {
+    maxHeight: 200,
+  },
+  suggestionRow: {
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.borderSubtle,
+  },
+  suggestionPrimary: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: Colors.textPrimary,
+    fontFamily: "DMSans_500Medium",
+  },
+  suggestionSecondary: {
+    fontSize: 12,
+    color: Colors.textMuted,
+    marginTop: 2,
+    fontFamily: "DMSans_400Regular",
   },
 });

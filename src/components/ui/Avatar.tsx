@@ -1,8 +1,8 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Image, StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import Animated, { FadeIn } from "react-native-reanimated";
 import { Colors } from "@/src/features/shared/theme";
+import { ensurePublicUrl } from "@/src/services/imageService";
 
 type AvatarSize = "sm" | "md" | "lg" | "xl";
 
@@ -44,9 +44,14 @@ interface AvatarProps {
 }
 
 export function Avatar({ uri, imageUri, name, size = "md", style }: AvatarProps) {
-  const resolvedUri = uri || imageUri;
+  const rawUri = uri || imageUri;
+  const resolvedUri = useMemo(() => (rawUri ? ensurePublicUrl(rawUri) : undefined), [rawUri]);
   const px = typeof size === "number" ? size : SIZE_MAP[size];
   const [imageLoaded, setImageLoaded] = useState(false);
+
+  if (__DEV__ && resolvedUri) {
+    console.log("[Avatar] rendering with URI:", resolvedUri);
+  }
 
   const initials = name ? getInitials(name) : "";
   const bgColor = name ? AVATAR_PALETTE[hashName(name) % AVATAR_PALETTE.length] : Colors.surfaceAlt;
@@ -60,13 +65,21 @@ export function Avatar({ uri, imageUri, name, size = "md", style }: AvatarProps)
       ]}
     >
       {resolvedUri ? (
-        <Animated.View entering={imageLoaded ? FadeIn.duration(200) : undefined} style={StyleSheet.absoluteFill}>
+        <View style={StyleSheet.absoluteFill}>
           <Image
             source={{ uri: resolvedUri }}
-            style={styles.image}
+            style={[styles.image, !imageLoaded && { opacity: 0 }]}
             onLoad={() => setImageLoaded(true)}
+            onError={() => setImageLoaded(false)}
           />
-        </Animated.View>
+          {!imageLoaded && initials ? (
+            <View style={[StyleSheet.absoluteFill, styles.initialsFallback]}>
+              <Text style={[styles.initials, { fontSize: px * 0.38, color: Colors.textInverse }]}>
+                {initials}
+              </Text>
+            </View>
+          ) : null}
+        </View>
       ) : initials ? (
         <Text style={[styles.initials, { fontSize: px * 0.38, color: Colors.textInverse }]}>
           {initials}
@@ -92,5 +105,9 @@ const styles = StyleSheet.create({
   },
   initials: {
     fontWeight: "700",
+  },
+  initialsFallback: {
+    alignItems: "center",
+    justifyContent: "center",
   },
 });

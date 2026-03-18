@@ -33,7 +33,9 @@ import {
   Spacing,
 } from "@/src/components";
 import { useAuth } from "@/src/features/auth/auth-context";
+import { useThemeColors } from "@/src/hooks/useThemeColors";
 import { useEntranceAnimation } from "@/src/hooks";
+import { AppConfig } from "@/src/constants/app";
 import {
   listChargers,
   updateChargerStatus,
@@ -93,6 +95,7 @@ function isWithinWindow(isoDate: string | undefined, window: RevenueWindow): boo
 
 export default function AdminOverviewTabScreen() {
   const { profile } = useAuth();
+  const colors = useThemeColors();
   const entranceStyle = useEntranceAnimation();
   const queryClient = useQueryClient();
 
@@ -133,6 +136,10 @@ export default function AdminOverviewTabScreen() {
   const chargers = useMemo(() => chargersQuery.data ?? [], [chargersQuery.data]);
   const bookings = useMemo(() => bookingsQuery.data ?? [], [bookingsQuery.data]);
   const users = useMemo(() => usersQuery.data ?? [], [usersQuery.data]);
+  const pendingChargerCount = useMemo(
+    () => chargers.filter((c) => c.status === "pending").length,
+    [chargers]
+  );
   const isLoading = chargersQuery.isLoading || bookingsQuery.isLoading || usersQuery.isLoading;
   const error =
     chargersQuery.error?.message || bookingsQuery.error?.message || usersQuery.error?.message || null;
@@ -297,11 +304,11 @@ export default function AdminOverviewTabScreen() {
         if (action === "remove") {
           await deleteCharger(chargerId);
         } else if (action === "approve") {
-          await updateChargerStatus(chargerId, "approved", 100);
+          await updateChargerStatus(chargerId, "approved", AppConfig.VERIFICATION.approvedScore);
         } else if (action === "suspend") {
-          await updateChargerStatus(chargerId, "rejected", 10);
+          await updateChargerStatus(chargerId, "rejected", AppConfig.VERIFICATION.suspendScore);
         } else {
-          await updateChargerStatus(chargerId, "rejected", 0);
+          await updateChargerStatus(chargerId, "rejected", AppConfig.VERIFICATION.rejectedScore);
         }
         invalidateAll();
         setSelectedCharger(null);
@@ -485,7 +492,7 @@ export default function AdminOverviewTabScreen() {
       : "Search charger name";
 
   return (
-    <SafeAreaView style={styles.safe} edges={["bottom"]}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={["bottom"]}>
       <Animated.View style={[{ flex: 1 }, entranceStyle]}>
       <ScreenContainer scrollable={false}>
         <View style={styles.headerRow}>
@@ -522,10 +529,10 @@ export default function AdminOverviewTabScreen() {
               onPress={() => { setSelectedPanel("chargers"); setSearchText(""); }}
             />
             <StatCard
-              icon="📅"
-              value={bookings.length}
-              label="Bookings"
-              onPress={() => { setSelectedPanel("bookings"); setSearchText(""); setBookingFilter("all"); }}
+              icon="⏳"
+              value={pendingChargerCount}
+              label="Pending"
+              onPress={() => { setSelectedPanel("chargers"); setSearchText(""); }}
             />
             <StatCard
               icon="💰"
@@ -540,18 +547,18 @@ export default function AdminOverviewTabScreen() {
         {selectedPanel ? (
           <View style={styles.explorerWrap}>
             <View style={styles.panelHeader}>
-              <SectionTitle
-                title={
-                  selectedPanel === "users"
-                    ? "User Management"
-                    : selectedPanel === "chargers"
-                    ? "Charger Management"
-                    : selectedPanel === "bookings"
-                    ? "Booking Management"
-                    : "Revenue Dashboard"
-                }
-              />
-              <SecondaryButton label="Close" onPress={() => setSelectedPanel(null)} style={styles.closeBtn} />
+              <Text style={styles.panelTitle}>
+                {selectedPanel === "users"
+                  ? "User Management"
+                  : selectedPanel === "chargers"
+                  ? "Charger Management"
+                  : selectedPanel === "bookings"
+                  ? "Booking Management"
+                  : "Revenue Dashboard"}
+              </Text>
+              <PressableScale onPress={() => setSelectedPanel(null)} style={styles.closeBtn}>
+                <Ionicons name="close-circle" size={28} color={Colors.textMuted} />
+              </PressableScale>
             </View>
 
             {selectedPanel === "bookings" ? (
@@ -880,9 +887,16 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    marginBottom: Spacing.sm,
+  },
+  panelTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: Colors.textPrimary,
+    flex: 1,
   },
   closeBtn: {
-    paddingHorizontal: Spacing.md,
+    padding: Spacing.xs,
   },
   explorerListContent: {
     marginTop: Spacing.sm,

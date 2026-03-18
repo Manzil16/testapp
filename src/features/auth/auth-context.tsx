@@ -278,6 +278,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .update(updatePayload)
           .eq("id", user.id);
         if (error) throw error;
+
+        // Optimistically update local profile state so the UI reflects
+        // changes immediately (e.g. new avatar) without waiting for realtime.
+        setProfile((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            ...(patch.displayName !== undefined && { displayName: patch.displayName }),
+            ...(patch.phone !== undefined && { phone: patch.phone }),
+            ...(patch.avatarUrl !== undefined && { avatarUrl: patch.avatarUrl }),
+            ...(patch.preferredReservePercent !== undefined && { preferredReservePercent: patch.preferredReservePercent }),
+            ...(patch.role !== undefined && { role: patch.role }),
+          };
+        });
       },
     }),
     [user, profile, isBootstrapping, isProfileLoading, needsRoleSelection]

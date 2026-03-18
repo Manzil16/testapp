@@ -4,10 +4,17 @@ import { listBookingsByDriver } from "../features/bookings/booking.repository";
 import { listChargers } from "../features/chargers/charger.repository";
 import { listTripsByUser } from "../features/trips/trip.repository";
 import { listVehiclesByUser } from "../features/vehicles/vehicle.repository";
+import { useUserLocation, getDistanceKm } from "./useUserLocation";
 import type { Booking } from "../features/bookings/booking.types";
 import type { Charger } from "../features/chargers/charger.types";
 
+export interface ChargerWithDistance extends Charger {
+  distanceKm: number | null;
+}
+
 export function useDriverDashboard(userId?: string) {
+  const { location } = useUserLocation();
+
   const bookingsQuery = useQuery({
     queryKey: ["bookings", "driver", userId],
     queryFn: () => listBookingsByDriver(userId!),
@@ -51,10 +58,33 @@ export function useDriverDashboard(userId?: string) {
     return map;
   }, [chargers]);
 
+  // Sort chargers by distance from user, return top 6
+  const nearbyChargers = useMemo<ChargerWithDistance[]>(() => {
+    const withDistance: ChargerWithDistance[] = chargers.map((c) => ({
+      ...c,
+      distanceKm: location
+        ? getDistanceKm(location.latitude, location.longitude, c.latitude, c.longitude)
+        : null,
+    }));
+
+    withDistance.sort((a, b) => {
+      if (a.distanceKm === null && b.distanceKm === null) return 0;
+      if (a.distanceKm === null) return 1;
+      if (b.distanceKm === null) return -1;
+      return a.distanceKm - b.distanceKm;
+    });
+
+    return withDistance.slice(0, 6);
+  }, [chargers, location]);
+
+  // The single nearest charger for quick CTA
+  const nearestCharger = nearbyChargers[0] ?? null;
+
   return {
     data: {
       activeBooking,
-      nearbyChargers: chargers.slice(0, 5),
+      nearbyChargers,
+      nearestCharger,
       chargersById,
       stats: {
         totalBookings: bookings.length,

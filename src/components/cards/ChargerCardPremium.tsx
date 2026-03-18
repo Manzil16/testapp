@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo, useState } from "react";
 import {
   Image,
   StyleSheet,
@@ -8,6 +8,7 @@ import {
   ViewStyle,
 } from "react-native";
 import { Colors, Radius, Shadows, Spacing } from "@/src/features/shared/theme";
+import { ensurePublicUrl } from "@/src/services/imageService";
 import { InfoPill } from "../ui/InfoPill";
 import { RatingStarsRow } from "../ui/RatingStarsRow";
 import { TrustBadge, TrustBadgeType } from "../ui/TrustBadge";
@@ -59,13 +60,34 @@ export function ChargerCardPremium({
     distanceKm,
   } = charger;
 
+  const [imageError, setImageError] = useState(false);
+  const normalizedImage = useMemo(() => {
+    if (!imageSource || imageError) return null;
+    if (typeof imageSource === "string") return ensurePublicUrl(imageSource);
+    return imageSource;
+  }, [imageSource, imageError]);
+  const resolvedImage = normalizedImage;
+
+  if (__DEV__ && resolvedImage && typeof resolvedImage === "string") {
+    console.log("[ChargerCard] rendering image URI:", resolvedImage);
+  }
+
   if (compact) {
     return (
       <TouchableOpacity onPress={onPress} activeOpacity={0.8} style={[styles.compactCard, style]}>
         <View style={styles.compactLeft}>
-          <View style={[styles.compactAvatar, { backgroundColor: available ? Colors.primaryLight : Colors.surfaceAlt }]}>
-            <Text style={styles.compactAvatarIcon}>⚡</Text>
-          </View>
+          {resolvedImage ? (
+            <Image
+              source={typeof resolvedImage === "string" ? { uri: resolvedImage } : resolvedImage}
+              style={styles.compactImageThumb}
+              resizeMode="cover"
+              onError={() => setImageError(true)}
+            />
+          ) : (
+            <View style={[styles.compactAvatar, { backgroundColor: available ? Colors.primaryLight : Colors.surfaceAlt }]}>
+              <Text style={styles.compactAvatarIcon}>⚡</Text>
+            </View>
+          )}
         </View>
         <View style={styles.compactBody}>
           <View style={styles.compactHeader}>
@@ -92,11 +114,12 @@ export function ChargerCardPremium({
     <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={[styles.card, style]}>
       {/* Photo area */}
       <View style={styles.imageContainer}>
-        {imageSource ? (
+        {resolvedImage ? (
           <Image
-            source={typeof imageSource === "string" ? { uri: imageSource } : imageSource}
+            source={typeof resolvedImage === "string" ? { uri: resolvedImage } : resolvedImage}
             style={styles.image}
             resizeMode="cover"
+            onError={() => setImageError(true)}
           />
         ) : (
           <View style={styles.imagePlaceholder}>
@@ -267,6 +290,11 @@ const styles = StyleSheet.create({
   },
   compactLeft: {
     marginRight: Spacing.md,
+  },
+  compactImageThumb: {
+    width: 48,
+    height: 48,
+    borderRadius: Radius.lg,
   },
   compactAvatar: {
     width: 48,

@@ -1,4 +1,5 @@
 import { supabase } from "../lib/supabase";
+import { AppConfig } from "../constants/app";
 
 export interface StripeOnboardingResult {
   accountId: string;
@@ -36,7 +37,7 @@ export async function createPaymentIntent(input: {
       bookingId: input.bookingId,
       amount: input.amount,
       hostStripeAccountId: input.hostStripeAccountId,
-      platformFeePercent: 20,
+      platformFeePercent: AppConfig.PLATFORM_FEE_PERCENT,
     },
   });
   if (error) throw new Error(error.message || "Failed to create payment intent");

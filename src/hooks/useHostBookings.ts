@@ -5,6 +5,7 @@ import {
   updateBookingStatus,
 } from "../features/bookings/booking.repository";
 import { listChargersByHost } from "../features/chargers/charger.repository";
+import { createPaymentIntent } from "../services/stripeService";
 import type { Booking } from "../features/bookings/booking.types";
 import type { Charger } from "../features/chargers/charger.types";
 import type { UserProfile } from "../features/users/user.types";
@@ -78,8 +79,34 @@ export function useHostBookings(hostUserId?: string) {
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["bookings"] });
 
   const approveMutation = useMutation({
-    mutationFn: ({ booking, note }: { booking: Booking; note?: string }) =>
-      updateBookingStatus(booking.id, "approved", note),
+    mutationFn: async ({ booking, note }: { booking: Booking; note?: string }) => {
+      // Look up host's Stripe account
+      const { data: hostProfile } = await supabase
+        .from("profiles")
+        .select("stripe_account_id")
+        .eq("id", booking.hostUserId)
+        .single();
+
+      const stripeAccountId = hostProfile?.stripe_account_id;
+
+      if (stripeAccountId) {
+        // Create a Stripe payment intent with platform fee split
+        const amountCents = Math.round(booking.totalAmount * 100);
+        const result = await createPaymentIntent({
+          bookingId: booking.id,
+          amount: amountCents,
+          hostStripeAccountId: stripeAccountId,
+        });
+
+        // Store payment intent ID on the booking
+        await supabase
+          .from("bookings")
+          .update({ stripe_payment_intent_id: result.paymentIntentId })
+          .eq("id", booking.id);
+      }
+
+      await updateBookingStatus(booking.id, "approved", note);
+    },
     onSuccess: invalidate,
   });
 

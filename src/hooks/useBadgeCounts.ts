@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { listNotificationsByUser } from "../features/notifications/notification.repository";
 import { listBookingsByDriver } from "../features/bookings/booking.repository";
 import { listReviewsByDriver } from "../features/reviews/review.repository";
+import { listChargers } from "../features/chargers/charger.repository";
 import { useAuth } from "../features/auth/auth-context";
 
 const KEYS = {
@@ -35,6 +36,8 @@ export interface BadgeCounts {
   messages: number;
   chargerUpdates: number;
   profile: number;
+  pendingVerifications: number;
+  unreadNotifications: number;
 }
 
 export interface BadgeTargets {
@@ -93,6 +96,14 @@ export function useBadgeCounts() {
     queryKey: ["reviews", "driver", userId],
     queryFn: () => listReviewsByDriver(userId!),
     enabled: Boolean(userId),
+  });
+
+  const isAdmin = profile?.role === "admin";
+  const pendingChargersQuery = useQuery({
+    queryKey: ["chargers", "pending"],
+    queryFn: () => listChargers({ status: "pending" }),
+    enabled: Boolean(userId) && isAdmin,
+    refetchInterval: 30_000,
   });
 
   const seen = seenQuery.data ?? DEFAULT_SEEN;
@@ -165,17 +176,24 @@ export function useBadgeCounts() {
     const messages = unreadNotifs;
     const chargerUpdates = chargerNotifs;
 
+    const pendingVerifications = isAdmin ? (pendingChargersQuery.data?.length ?? 0) : 0;
+    const unreadNotifications = notifications.filter((n) => !n.isRead).length;
+
     return {
-      total: sessions + messages + chargerUpdates + profileIncomplete,
+      total: sessions + messages + chargerUpdates + profileIncomplete + pendingVerifications,
       sessions,
       messages,
       chargerUpdates,
       profile: profileIncomplete,
+      pendingVerifications,
+      unreadNotifications,
     };
   }, [
     bookingsQuery.data,
     hasProfile,
+    isAdmin,
     notificationsQuery.data,
+    pendingChargersQuery.data,
     profileUpdatedAtIso,
     reviewsQuery.data,
     seen,

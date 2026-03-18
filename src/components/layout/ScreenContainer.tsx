@@ -8,7 +8,8 @@ import {
   ViewStyle,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Colors, Spacing } from "@/src/features/shared/theme";
+import { Spacing } from "@/src/features/shared/theme";
+import { useThemeColors } from "@/src/hooks/useThemeColors";
 
 interface ScreenContainerProps {
   children: React.ReactNode;
@@ -27,11 +28,13 @@ interface ScreenContainerProps {
 export function ScreenContainer({
   children,
   scrollable = true,
-  backgroundColor = Colors.background,
+  backgroundColor,
   noPadding = false,
   contentStyle,
   bottomInset = 0,
 }: ScreenContainerProps) {
+  const themeColors = useThemeColors();
+  const bg = backgroundColor ?? themeColors.background;
   const inner = scrollable ? (
     <ScrollView
       style={{ flex: 1 }}
@@ -60,7 +63,7 @@ export function ScreenContainer({
   );
 
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor }]} edges={["top"]}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: bg }]} edges={["top"]}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : undefined}

@@ -3,7 +3,7 @@ import * as SplashScreen from "expo-splash-screen";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useState } from "react";
-import { StyleSheet, Text } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -29,6 +29,7 @@ import {
 import { AuthProvider, useAuth } from "../src/features/auth/auth-context";
 import { queryClient } from "../src/lib/query-client";
 import { Colors } from "@/src/features/shared/theme";
+import { ThemeProvider } from "@/src/features/shared/ThemeProvider";
 import { NetworkBanner } from "@/src/components";
 import type { AppRole } from "@/src/features/users";
 
@@ -102,7 +103,7 @@ const splashStyles = StyleSheet.create({
   },
 });
 
-function AppRouteGate() {
+function AppRouteGate({ themeColors }: { themeColors: { background: string } }) {
   const router = useRouter();
   const segments = useSegments() as string[];
   const { isAuthenticated, profile, isBootstrapping, isProfileLoading, needsRoleSelection } = useAuth();
@@ -181,7 +182,7 @@ function AppRouteGate() {
       <Stack
         screenOptions={{
           headerShown: false,
-          contentStyle: { backgroundColor: Colors.background },
+          contentStyle: { backgroundColor: themeColors.background },
           animation: "fade",
         }}
       >
@@ -193,6 +194,15 @@ function AppRouteGate() {
         <AnimatedSplashOverlay onFinished={handleOverlayFinished} />
       ) : null}
     </>
+  );
+}
+
+function AppRouteGateWithTheme() {
+  return (
+    <View style={{ flex: 1, backgroundColor: Colors.background }}>
+      <AppRouteGate themeColors={Colors} />
+      <StatusBar style="dark" />
+    </View>
   );
 }
 
@@ -213,12 +223,13 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: Colors.background }}>
-      <QueryClientProvider client={queryClient}>
-        <AuthProvider>
-          <AppRouteGate />
-        </AuthProvider>
-      </QueryClientProvider>
-      <StatusBar style="light" />
+      <ThemeProvider>
+        <QueryClientProvider client={queryClient}>
+          <AuthProvider>
+            <AppRouteGateWithTheme />
+          </AuthProvider>
+        </QueryClientProvider>
+      </ThemeProvider>
     </GestureHandlerRootView>
   );
 }

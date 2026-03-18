@@ -17,79 +17,96 @@ import {
 import { Colors, Radius, Shadows, Spacing, Typography } from "@/src/features/shared/theme";
 import { useAuth } from "@/src/features/auth/auth-context";
 import {
-  listVerificationQueue,
   reviewVerificationRequest,
 } from "@/src/features/verification/verification.repository";
-import type { VerificationRequest, VerificationStatus } from "@/src/features/verification/verification.types";
+import type { VerificationStatus } from "@/src/features/verification/verification.types";
 import { listChargers, updateChargerStatus } from "@/src/features/chargers/charger.repository";
 import type { Charger, ChargerStatus } from "@/src/features/chargers/charger.types";
 import { createNotification } from "@/src/features/notifications/notification.repository";
+import { getUserProfile } from "@/src/features/users/user.repository";
+import { AppConfig } from "@/src/constants/app";
 import { useEntranceAnimation, useRefresh } from "@/src/hooks";
+import { useThemeColors } from "@/src/hooks/useThemeColors";
 
 export default function AdminVerifyTabScreen() {
   const { user } = useAuth();
   const entranceStyle = useEntranceAnimation();
+  const colors = useThemeColors();
   const queryClient = useQueryClient();
   const reviewerUserId = user?.id;
 
-  const [selected, setSelected] = useState<VerificationRequest | null>(null);
-  const [rejectTarget, setRejectTarget] = useState<VerificationRequest | null>(null);
+  const [selected, setSelected] = useState<Charger | null>(null);
+  const [rejectTarget, setRejectTarget] = useState<Charger | null>(null);
   const [rejectReason, setRejectReason] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const queueQuery = useQuery({
-    queryKey: ["verifications", "queue"],
-    queryFn: listVerificationQueue,
+  // Query pending chargers directly from the chargers table
+  const pendingChargersQuery = useQuery({
+    queryKey: ["chargers", "pending"],
+    queryFn: () => listChargers({ status: "pending" }),
   });
 
-  const chargersQuery = useQuery({
-    queryKey: ["chargers", "all"],
-    queryFn: () => listChargers(),
+  const pendingChargers = pendingChargersQuery.data ?? [];
+
+  // Resolve host profiles for display names
+  const hostIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const charger of pendingChargers) ids.add(charger.hostUserId);
+    return Array.from(ids);
+  }, [pendingChargers]);
+
+  const hostsQuery = useQuery({
+    queryKey: ["profiles", "hosts", hostIds],
+    queryFn: async () => {
+      const results: Record<string, string> = {};
+      await Promise.all(
+        hostIds.map(async (id) => {
+          try {
+            const profile = await getUserProfile(id);
+            if (profile) results[id] = profile.displayName;
+          } catch { /* skip */ }
+        })
+      );
+      return results;
+    },
+    enabled: hostIds.length > 0,
   });
 
-  const queue = queueQuery.data ?? [];
-  const chargersById = useMemo(() => {
-    const map: Record<string, Charger> = {};
-    for (const c of chargersQuery.data ?? []) map[c.id] = c;
-    return map;
-  }, [chargersQuery.data]);
+  const hostNames = hostsQuery.data ?? {};
 
-  const isLoading = queueQuery.isLoading || chargersQuery.isLoading;
+  const isLoading = pendingChargersQuery.isLoading;
 
   const refresh = async () => {
-    await Promise.all([queueQuery.refetch(), chargersQuery.refetch()]);
+    await pendingChargersQuery.refetch();
   };
   const { refreshing, onRefresh } = useRefresh(refresh);
 
   const handleDecision = async (
-    request: VerificationRequest,
+    charger: Charger,
     status: VerificationStatus,
     reasonNote?: string
   ) => {
     if (!reviewerUserId) return;
 
     try {
-      setBusyId(request.id);
+      setBusyId(charger.id);
       setError(null);
 
       const note = reasonNote || `Admin decision: ${status}`;
 
-      await reviewVerificationRequest({
-        requestId: request.id,
-        reviewerUserId,
-        status,
-        note,
-      });
-
       const chargerStatus: ChargerStatus =
         status === "approved" ? "approved" : "rejected";
 
-      await updateChargerStatus(request.chargerId, chargerStatus, status === "approved" ? 92 : 20);
+      await updateChargerStatus(
+        charger.id,
+        chargerStatus,
+        status === "approved" ? AppConfig.VERIFICATION.approvedScore : AppConfig.VERIFICATION.rejectedScore
+      );
 
       try {
         await createNotification({
-          userId: request.hostUserId,
+          userId: charger.hostUserId,
           type: "verification",
           title: `Charger ${status === "approved" ? "Approved" : "Rejected"}`,
           body:
@@ -97,8 +114,7 @@ export default function AdminVerifyTabScreen() {
               ? `Your charger was rejected: ${note}`
               : `Your charger verification request was ${status}.`,
           metadata: {
-            verificationRequestId: request.id,
-            chargerId: request.chargerId,
+            chargerId: charger.id,
           },
         });
       } catch {
@@ -108,7 +124,7 @@ export default function AdminVerifyTabScreen() {
       queryClient.invalidateQueries({ queryKey: ["verifications"] });
       queryClient.invalidateQueries({ queryKey: ["chargers"] });
 
-      if (selected?.id === request.id) setSelected(null);
+      if (selected?.id === charger.id) setSelected(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to process decision.");
     } finally {
@@ -117,7 +133,7 @@ export default function AdminVerifyTabScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safe} edges={["bottom"]}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={["bottom"]}>
       <Animated.View style={[{ flex: 1 }, entranceStyle]}>
         <ScreenContainer scrollable={false}>
           <Animated.View entering={FadeIn.duration(350)} style={styles.header}>
@@ -125,9 +141,9 @@ export default function AdminVerifyTabScreen() {
               <Text style={styles.pageTitle}>Verification</Text>
               <Text style={styles.pageSubtitle}>Review host charger submissions</Text>
             </View>
-            {queue.length > 0 && (
+            {pendingChargers.length > 0 && (
               <View style={styles.queueBadge}>
-                <Text style={styles.queueBadgeText}>{queue.length}</Text>
+                <Text style={styles.queueBadgeText}>{pendingChargers.length}</Text>
               </View>
             )}
           </Animated.View>
@@ -140,19 +156,18 @@ export default function AdminVerifyTabScreen() {
           ) : null}
 
           <FlatList
-            data={queue}
+            data={pendingChargers}
             keyExtractor={(item) => item.id}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.listContent}
-            renderItem={({ item, index }) => {
-              const charger = chargersById[item.chargerId];
-              const connectorTypes = charger?.connectors.map((c) => c.type).join(", ") || "Unknown";
-              const isBusy = busyId === item.id;
+            renderItem={({ item: charger, index }) => {
+              const connectorTypes = charger.connectors.map((c) => c.type).join(", ") || "Unknown";
+              const isBusy = busyId === charger.id;
 
               return (
                 <AnimatedListItem index={index}>
-                  <PressableScale style={styles.card} onPress={() => setSelected(item)}>
+                  <PressableScale style={styles.card} onPress={() => setSelected(charger)}>
                     <View style={styles.cardAccent} />
                     <View style={styles.cardBody}>
                       <View style={styles.cardTop}>
@@ -161,48 +176,39 @@ export default function AdminVerifyTabScreen() {
                         </View>
                         <View style={{ flex: 1 }}>
                           <Text style={styles.chargerName} numberOfLines={1}>
-                            {charger?.name || item.chargerId}
+                            {charger.name}
                           </Text>
-                          {charger && (
-                            <Text style={styles.chargerLocation}>
-                              {charger.suburb}, {charger.state}
-                            </Text>
-                          )}
+                          <Text style={styles.chargerLocation}>
+                            {charger.suburb}, {charger.state}
+                          </Text>
                         </View>
                         <InfoPill label="Pending" variant="warning" />
                       </View>
 
                       <View style={styles.specsRow}>
-                        {charger && (
-                          <View style={styles.specItem}>
-                            <Ionicons name="speedometer-outline" size={13} color={Colors.textMuted} />
-                            <Text style={styles.specText}>{charger.maxPowerKw} kW</Text>
-                          </View>
-                        )}
+                        <View style={styles.specItem}>
+                          <Ionicons name="speedometer-outline" size={13} color={Colors.textMuted} />
+                          <Text style={styles.specText}>{charger.maxPowerKw} kW</Text>
+                        </View>
                         <View style={styles.specItem}>
                           <Ionicons name="hardware-chip-outline" size={13} color={Colors.textMuted} />
                           <Text style={styles.specText}>{connectorTypes}</Text>
                         </View>
                         <View style={styles.specItem}>
-                          <Ionicons name="time-outline" size={13} color={Colors.textMuted} />
-                          <Text style={styles.specText}>
-                            {new Date(item.createdAtIso).toLocaleDateString(undefined, {
-                              month: "short",
-                              day: "numeric",
-                            })}
-                          </Text>
+                          <Ionicons name="pricetag-outline" size={13} color={Colors.textMuted} />
+                          <Text style={styles.specText}>${charger.pricingPerKwh.toFixed(2)}/kWh</Text>
                         </View>
                       </View>
 
                       <View style={styles.hostRow}>
-                        <Avatar name={item.hostUserId.slice(0, 8)} size="sm" />
-                        <Text style={styles.hostId}>Host: {item.hostUserId.slice(0, 12)}</Text>
+                        <Avatar name={hostNames[charger.hostUserId] || charger.hostUserId.slice(0, 8)} size="sm" />
+                        <Text style={styles.hostId}>Host: {hostNames[charger.hostUserId] || charger.hostUserId.slice(0, 12)}</Text>
                       </View>
 
                       <View style={styles.actionRow}>
                         <PressableScale
                           onPress={() => {
-                            setRejectTarget(item);
+                            setRejectTarget(charger);
                             setRejectReason("");
                           }}
                           style={styles.rejectBtn}
@@ -212,7 +218,7 @@ export default function AdminVerifyTabScreen() {
                           <Text style={styles.rejectBtnText}>Reject</Text>
                         </PressableScale>
                         <PressableScale
-                          onPress={() => handleDecision(item, "approved")}
+                          onPress={() => handleDecision(charger, "approved")}
                           style={styles.approveBtn}
                           disabled={isBusy}
                         >
@@ -232,7 +238,7 @@ export default function AdminVerifyTabScreen() {
                 <View style={styles.emptyWrap}>
                   <Ionicons name="shield-checkmark" size={48} color={Colors.textMuted} />
                   <Text style={styles.emptyTitle}>All caught up</Text>
-                  <Text style={styles.emptyMessage}>No pending verification requests right now.</Text>
+                  <Text style={styles.emptyMessage}>No pending chargers to review right now.</Text>
                 </View>
               )
             }
@@ -243,13 +249,15 @@ export default function AdminVerifyTabScreen() {
       <BottomSheet
         visible={Boolean(selected)}
         onClose={() => setSelected(null)}
-        title="Verification Detail"
+        title="Charger Detail"
       >
         {selected ? (
           <View>
-            <Text style={styles.sheetTitle}>{chargersById[selected.chargerId]?.name || selected.chargerId}</Text>
-            <Text style={styles.sheetMeta}>Host: {selected.hostUserId}</Text>
-            <Text style={styles.sheetMeta}>Note: {selected.note || "None"}</Text>
+            <Text style={styles.sheetTitle}>{selected.name}</Text>
+            <Text style={styles.sheetMeta}>Location: {selected.suburb}, {selected.state}</Text>
+            <Text style={styles.sheetMeta}>Host: {hostNames[selected.hostUserId] || selected.hostUserId.slice(0, 12)}</Text>
+            <Text style={styles.sheetMeta}>Power: {selected.maxPowerKw} kW</Text>
+            <Text style={styles.sheetMeta}>Price: ${selected.pricingPerKwh.toFixed(2)}/kWh</Text>
             <Text style={styles.sheetMeta}>
               Submitted: {new Date(selected.createdAtIso).toLocaleString()}
             </Text>

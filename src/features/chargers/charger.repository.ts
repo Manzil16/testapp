@@ -1,4 +1,5 @@
 import { supabase } from "../../lib/supabase";
+import { AppConfig } from "../../constants/app";
 import type { Json } from "../../lib/database.types";
 import type {
   Charger,
@@ -72,7 +73,7 @@ export async function upsertCharger(
     availability_window: (payload.availabilityWindow as unknown as Json) ?? null,
     images: payload.images || [],
     status,
-    verification_score: status === "approved" ? 90 : 50,
+    verification_score: status === "approved" ? AppConfig.VERIFICATION.defaultApprovedScore : AppConfig.VERIFICATION.defaultPendingScore,
   };
 
   const { data, error } = await supabase

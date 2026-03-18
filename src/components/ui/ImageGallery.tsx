@@ -9,6 +9,7 @@ import {
 } from "react-native";
 import { Image } from "expo-image";
 import { Colors, Radius, Spacing } from "@/src/features/shared/theme";
+import { ensurePublicUrl } from "@/src/services/imageService";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const GALLERY_HEIGHT = 240;
@@ -56,14 +57,18 @@ export function ImageGallery({
           const index = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
           setActiveIndex(index);
         }}
-        renderItem={({ item }) => (
-          <Image
-            source={{ uri: item }}
-            style={[styles.image, { height }]}
-            contentFit="cover"
-            transition={200}
-          />
-        )}
+        renderItem={({ item }) => {
+          const safeUri = ensurePublicUrl(item);
+          if (__DEV__) console.log("[ImageGallery] rendering URI:", safeUri);
+          return (
+            <Image
+              source={{ uri: safeUri }}
+              style={[styles.image, { height }]}
+              contentFit="cover"
+              transition={200}
+            />
+          );
+        }}
       />
       {images.length > 1 && (
         <View style={styles.pagination}>

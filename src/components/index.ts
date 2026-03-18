@@ -54,6 +54,8 @@ export { NearbyChargerCard } from "./cards/NearbyChargerCard";
 // Theme re-export
 export {
   Colors,
+  LightColors,
+  getColors,
   Typography,
   Spacing,
   Radius,
@@ -61,3 +63,6 @@ export {
   Animation,
   RoleTheme,
 } from "@/src/features/shared/theme";
+
+// Theme Provider
+export { ThemeProvider, useTheme } from "@/src/features/shared/ThemeProvider";

@@ -10,6 +10,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
 import Animated from "react-native-reanimated";
 import {
   AnimatedListItem,
@@ -21,6 +22,7 @@ import {
   InfoPill,
   InputField,
   PrimaryCTA,
+  PressableScale,
   ScreenContainer,
   SegmentedControl,
   Toast,
@@ -161,6 +163,16 @@ export default function DriverBookingsScreen() {
                 const reviewedRating = reviewedIds[item.id] ?? reviewRatingsByBookingId[item.id];
                 const isPast = segment === "past";
                 const isCancelled = item.status === "cancelled" || item.status === "declined";
+
+                const durationMinutes = Math.max(
+                  30,
+                  Math.round(
+                    (new Date(item.endTimeIso).getTime() -
+                      new Date(item.startTimeIso).getTime()) /
+                      (1000 * 60)
+                  )
+                );
+
                 const primaryAction =
                   segment === "upcoming"
                     ? item.status === "requested" ? "Edit Booking" : undefined
@@ -177,26 +189,27 @@ export default function DriverBookingsScreen() {
                     ? "Mark Arrived"
                     : undefined;
 
+                const connectorLabel = charger?.connectors?.map((c) => c.type).join(", ");
+
                 return (
                   <AnimatedListItem index={index}>
-                    <View style={[styles.cardWrap, isCancelled && styles.cardCancelled]}>
+                    <PressableScale
+                      style={[styles.cardWrap, isCancelled && styles.cardCancelled]}
+                      onPress={() => charger && router.push(`/(app)/chargers/${charger.id}` as any)}
+                    >
                       <BookingCard
                         booking={{
                           id: item.id,
-                          chargerName: charger?.name || item.chargerId,
+                          chargerName: charger?.name || "Unknown Charger",
                           chargerAddress:
-                            charger ? `${charger.suburb}, ${charger.state}` : "Charger location",
+                            charger
+                              ? `${charger.address ? charger.address + ", " : ""}${charger.suburb}, ${charger.state}`
+                              : "Location unavailable",
                           status: item.status,
                           scheduledAt: item.startTimeIso,
-                          durationMinutes: Math.max(
-                            30,
-                            Math.round(
-                              (new Date(item.endTimeIso).getTime() -
-                                new Date(item.startTimeIso).getTime()) /
-                                (1000 * 60)
-                            )
-                          ),
+                          durationMinutes,
                           kwhDelivered: item.estimatedKWh,
+                          totalCost: item.totalAmount,
                         }}
                         secondaryActionLabel={secondaryAction}
                         onSecondaryAction={
@@ -215,13 +228,84 @@ export default function DriverBookingsScreen() {
                             : undefined
                         }
                       />
+
+                      {/* Charger details row */}
+                      {charger && (
+                        <View style={styles.chargerDetailsRow}>
+                          {charger.maxPowerKw ? (
+                            <View style={styles.detailChip}>
+                              <Ionicons name="speedometer-outline" size={12} color={Colors.primary} />
+                              <Text style={styles.detailChipText}>{charger.maxPowerKw} kW</Text>
+                            </View>
+                          ) : null}
+                          {connectorLabel ? (
+                            <View style={styles.detailChip}>
+                              <Ionicons name="hardware-chip-outline" size={12} color={Colors.info} />
+                              <Text style={styles.detailChipText}>{connectorLabel}</Text>
+                            </View>
+                          ) : null}
+                          <View style={styles.detailChip}>
+                            <Ionicons name="pricetag-outline" size={12} color={Colors.primary} />
+                            <Text style={styles.detailChipText}>
+                              ${charger.pricingPerKwh.toFixed(2)}/kWh
+                            </Text>
+                          </View>
+                        </View>
+                      )}
+
+                      {/* Time range */}
+                      <View style={styles.timeRangeRow}>
+                        <Ionicons name="time-outline" size={14} color={Colors.textMuted} />
+                        <Text style={styles.timeRangeText}>
+                          {new Date(item.startTimeIso).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" })}
+                          {" — "}
+                          {new Date(item.endTimeIso).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" })}
+                          {" · "}
+                          {durationMinutes >= 60
+                            ? `${Math.floor(durationMinutes / 60)}h ${durationMinutes % 60 > 0 ? `${durationMinutes % 60}m` : ""}`
+                            : `${durationMinutes}m`}
+                        </Text>
+                      </View>
+
+                      {/* Note / expiry info */}
+                      {item.note ? (
+                        <View style={styles.noteRow}>
+                          <Ionicons name="chatbubble-ellipses-outline" size={13} color={Colors.textMuted} />
+                          <Text style={styles.noteText} numberOfLines={2}>{item.note}</Text>
+                        </View>
+                      ) : null}
+
+                      {/* Cost breakdown for past bookings */}
+                      {isPast && item.totalAmount > 0 && (
+                        <View style={styles.costBreakdownRow}>
+                          <View style={styles.costItem}>
+                            <Text style={styles.costLabel}>Energy</Text>
+                            <Text style={styles.costValue}>{item.estimatedKWh.toFixed(1)} kWh</Text>
+                          </View>
+                          <View style={styles.costItem}>
+                            <Text style={styles.costLabel}>Rate</Text>
+                            <Text style={styles.costValue}>
+                              ${charger ? charger.pricingPerKwh.toFixed(2) : (item.totalAmount / item.estimatedKWh).toFixed(2)}/kWh
+                            </Text>
+                          </View>
+                          <View style={styles.costItem}>
+                            <Text style={styles.costLabel}>Platform fee</Text>
+                            <Text style={styles.costValue}>${item.platformFee.toFixed(2)}</Text>
+                          </View>
+                          <View style={styles.costItem}>
+                            <Text style={styles.costLabelBold}>Total</Text>
+                            <Text style={styles.costValueBold}>${item.totalAmount.toFixed(2)}</Text>
+                          </View>
+                        </View>
+                      )}
+
                       <BookingTimeline status={item.status} currentStep={item.arrivalSignal} />
                       {isPast && reviewedRating ? (
                         <View style={styles.reviewedRow}>
                           <InfoPill label={`${reviewedRating.toFixed(1)}★ Reviewed`} variant="success" />
                         </View>
                       ) : null}
-                    </View>
+                    </PressableScale>
                   </AnimatedListItem>
                 );
               }}
@@ -303,6 +387,90 @@ const styles = StyleSheet.create({
   reviewedRow: {
     marginTop: Spacing.xs,
     marginLeft: Spacing.sm,
+  },
+  chargerDetailsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: Spacing.xs,
+    paddingHorizontal: Spacing.sm,
+    marginTop: Spacing.xs,
+  },
+  detailChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    backgroundColor: Colors.surfaceAlt,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: Radius.pill,
+  },
+  detailChipText: {
+    fontSize: 11,
+    fontWeight: "500",
+    color: Colors.textSecondary,
+  },
+  timeRangeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.xs,
+    paddingHorizontal: Spacing.sm,
+    marginTop: Spacing.sm,
+  },
+  timeRangeText: {
+    fontSize: 12,
+    fontWeight: "500",
+    color: Colors.textSecondary,
+  },
+  noteRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: Spacing.xs,
+    paddingHorizontal: Spacing.sm,
+    marginTop: Spacing.xs,
+  },
+  noteText: {
+    flex: 1,
+    fontSize: 12,
+    color: Colors.textMuted,
+    fontStyle: "italic",
+  },
+  costBreakdownRow: {
+    flexDirection: "row",
+    backgroundColor: Colors.surfaceAlt,
+    borderRadius: Radius.md,
+    marginHorizontal: Spacing.sm,
+    marginTop: Spacing.sm,
+    padding: Spacing.sm,
+  },
+  costItem: {
+    flex: 1,
+    alignItems: "center",
+  },
+  costLabel: {
+    fontSize: 9,
+    fontWeight: "500",
+    color: Colors.textMuted,
+    textTransform: "uppercase",
+    letterSpacing: 0.3,
+    marginBottom: 2,
+  },
+  costLabelBold: {
+    fontSize: 9,
+    fontWeight: "700",
+    color: Colors.textPrimary,
+    textTransform: "uppercase",
+    letterSpacing: 0.3,
+    marginBottom: 2,
+  },
+  costValue: {
+    fontSize: 12,
+    fontWeight: "500",
+    color: Colors.textSecondary,
+  },
+  costValueBold: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: Colors.primary,
   },
   ratingLabel: {
     fontSize: 14,

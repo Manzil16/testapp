@@ -19,9 +19,10 @@ export function useDriverBookings(userId?: string) {
     enabled: Boolean(userId),
   });
 
+  // Fetch ALL chargers (not just approved) so bookings for pending/rejected chargers still resolve names
   const chargersQuery = useQuery({
-    queryKey: ["chargers", "approved"],
-    queryFn: () => listChargers({ status: "approved" }),
+    queryKey: ["chargers", "all-for-bookings"],
+    queryFn: () => listChargers(),
     enabled: Boolean(userId),
   });
 

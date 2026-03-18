@@ -15,6 +15,7 @@ import {
   AnimatedListItem,
   Avatar,
   EmptyStateCard,
+  InfoPill,
   NearbyChargerCard,
   PressableScale,
   ScreenContainer,
@@ -25,8 +26,16 @@ import {
   Shadows,
   Spacing,
 } from "@/src/components";
-import { useDriverDashboard, useEntranceAnimation, useRefresh } from "@/src/hooks";
+import {
+  useDriverDashboard,
+  useEntranceAnimation,
+  useRefresh,
+  useAnnouncements,
+  useBadgeCounts,
+  useEngagement,
+} from "@/src/hooks";
 import { useAuth } from "@/src/features/auth/auth-context";
+import { formatDistance } from "@/src/hooks/useUserLocation";
 
 function getGreeting(): string {
   const hour = new Date().getHours();
@@ -35,18 +44,24 @@ function getGreeting(): string {
   return "Good evening";
 }
 
+const ANNOUNCEMENT_COLORS: Record<string, { bg: string; icon: keyof typeof Ionicons.glyphMap; color: string }> = {
+  info: { bg: Colors.infoLight, icon: "information-circle", color: Colors.info },
+  warning: { bg: Colors.warningLight, icon: "alert-circle", color: Colors.warning },
+  promo: { bg: Colors.primaryLight, icon: "gift", color: Colors.primary },
+};
+
 export default function DriverHomeScreen() {
   const router = useRouter();
   const { user, profile } = useAuth();
   const entranceStyle = useEntranceAnimation();
+  const { announcements } = useAnnouncements();
+  const { counts } = useBadgeCounts();
 
-  const userId = useMemo(
-    () => user?.id,
-    [user?.id]
-  );
+  const userId = useMemo(() => user?.id, [user?.id]);
 
   const { data, isLoading, error, refresh } = useDriverDashboard(userId);
   const { refreshing, onRefresh } = useRefresh(refresh);
+  const { nudges, streak } = useEngagement(data.stats);
 
   const activeBooking = data.activeBooking;
   const activeChargerName = activeBooking
@@ -86,9 +101,22 @@ export default function DriverHomeScreen() {
                         <Text style={styles.heroGreeting}>{getGreeting()},</Text>
                         <Text style={styles.heroName}>{firstName}</Text>
                       </View>
+                      <PressableScale
+                        onPress={() => router.push("/(app)/notifications" as any)}
+                        style={styles.notifBtn}
+                      >
+                        <Ionicons name="notifications-outline" size={22} color="#FFFFFF" />
+                        {counts.unreadNotifications > 0 && (
+                          <View style={styles.notifBadge}>
+                            <Text style={styles.notifBadgeText}>
+                              {counts.unreadNotifications > 9 ? "9+" : counts.unreadNotifications}
+                            </Text>
+                          </View>
+                        )}
+                      </PressableScale>
                     </View>
 
-                    {/* Stats row inside hero */}
+                    {/* Stats row */}
                     <View style={styles.heroStatsRow}>
                       {isLoading ? (
                         <View style={styles.heroStatsLoading}>
@@ -116,7 +144,25 @@ export default function DriverHomeScreen() {
                   </LinearGradient>
                 </Animated.View>
 
-                {/* Active Booking */}
+                {/* Announcement Banner */}
+                {announcements.length > 0 && (
+                  <Animated.View entering={FadeInDown.delay(50).duration(350)}>
+                    {announcements.map((ann) => {
+                      const config = ANNOUNCEMENT_COLORS[ann.type] || ANNOUNCEMENT_COLORS.info;
+                      return (
+                        <View key={ann.id} style={[styles.announcementBanner, { backgroundColor: config.bg }]}>
+                          <Ionicons name={config.icon} size={20} color={config.color} />
+                          <View style={{ flex: 1 }}>
+                            <Text style={[styles.announcementTitle, { color: config.color }]}>{ann.title}</Text>
+                            <Text style={styles.announcementBody}>{ann.body}</Text>
+                          </View>
+                        </View>
+                      );
+                    })}
+                  </Animated.View>
+                )}
+
+                {/* Active Booking with live pulse */}
                 {activeBooking ? (
                   <Animated.View entering={FadeInDown.delay(100).duration(350)}>
                     <PressableScale
@@ -131,9 +177,14 @@ export default function DriverHomeScreen() {
                           <Ionicons name="flash" size={20} color={Colors.primary} />
                         </View>
                         <View style={{ flex: 1 }}>
-                          <Text style={styles.activeLabel}>Active Session</Text>
+                          <View style={styles.activeLabelRow}>
+                            <Text style={styles.activeLabel}>Active Session</Text>
+                            <View style={styles.liveDot} />
+                            <Text style={styles.liveText}>LIVE</Text>
+                          </View>
                           <Text style={styles.activeName}>{activeChargerName}</Text>
                           <Text style={styles.activeTime}>
+                            Started{" "}
                             {new Date(activeBooking.startTimeIso).toLocaleTimeString(undefined, {
                               hour: "2-digit",
                               minute: "2-digit",
@@ -164,6 +215,31 @@ export default function DriverHomeScreen() {
                   </Animated.View>
                 )}
 
+                {/* Nearest Charger Shortcut */}
+                {data.nearestCharger && !activeBooking && (
+                  <Animated.View entering={FadeInDown.delay(150).duration(350)}>
+                    <PressableScale
+                      style={styles.nearestCard}
+                      onPress={() => router.push(`/(app)/chargers/${data.nearestCharger!.id}` as any)}
+                    >
+                      <View style={styles.nearestIcon}>
+                        <Ionicons name="navigate" size={18} color={Colors.primary} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.nearestTitle}>Nearest Charger</Text>
+                        <Text style={styles.nearestName}>{data.nearestCharger.name}</Text>
+                      </View>
+                      {data.nearestCharger.distanceKm !== null && (
+                        <InfoPill
+                          label={formatDistance(data.nearestCharger.distanceKm)}
+                          variant="primary"
+                        />
+                      )}
+                      <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />
+                    </PressableScale>
+                  </Animated.View>
+                )}
+
                 {/* Quick Actions */}
                 <Animated.View entering={FadeInDown.delay(200).duration(350)} style={styles.actionsRow}>
                   {[
@@ -185,11 +261,83 @@ export default function DriverHomeScreen() {
                   ))}
                 </Animated.View>
 
+                {/* Engagement Nudges */}
+                {nudges.length > 0 && (
+                  <Animated.View entering={FadeInDown.delay(250).duration(350)}>
+                    {nudges.map((nudge) => (
+                      <PressableScale
+                        key={nudge.id}
+                        style={styles.nudgeCard}
+                        onPress={() => {
+                          if (nudge.id === "first-booking" || nudge.id === "morning" || nudge.id === "evening") {
+                            router.push("/(app)/(tabs)/discover" as any);
+                          } else if (nudge.id === "add-vehicle") {
+                            router.push("/(app)/driver/vehicle" as any);
+                          }
+                        }}
+                      >
+                        <View style={styles.nudgeIconCircle}>
+                          <Ionicons name={nudge.icon as any} size={18} color={Colors.primary} />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.nudgeTitle}>{nudge.title}</Text>
+                          <Text style={styles.nudgeSubtitle}>{nudge.subtitle}</Text>
+                        </View>
+                        <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
+                      </PressableScale>
+                    ))}
+                  </Animated.View>
+                )}
+
+                {/* Profile completion nudge */}
+                {counts.profile > 0 && (
+                  <Animated.View entering={FadeInDown.delay(280).duration(350)}>
+                    <PressableScale
+                      style={styles.profileNudge}
+                      onPress={() => router.push("/(app)/(tabs)/profile" as any)}
+                    >
+                      <View style={styles.profileNudgeIcon}>
+                        <Ionicons name="person-add" size={18} color={Colors.warning} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.nudgeTitle}>Complete your profile</Text>
+                        <Text style={styles.nudgeSubtitle}>Add your photo and phone to build trust</Text>
+                      </View>
+                      <View style={styles.profileNudgeBadge}>
+                        <Text style={styles.profileNudgeBadgeText}>1</Text>
+                      </View>
+                    </PressableScale>
+                  </Animated.View>
+                )}
+
+                {/* Unrated sessions nudge */}
+                {counts.sessions > 0 && (
+                  <Animated.View entering={FadeInDown.delay(290).duration(350)}>
+                    <PressableScale
+                      style={styles.nudgeCard}
+                      onPress={() => router.push("/(app)/(tabs)/bookings" as any)}
+                    >
+                      <View style={styles.nudgeIconCircle}>
+                        <Ionicons name="star-half" size={18} color={Colors.primary} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.nudgeTitle}>
+                          {counts.sessions} unrated {counts.sessions === 1 ? "session" : "sessions"}
+                        </Text>
+                        <Text style={styles.nudgeSubtitle}>Leave a review to help the community</Text>
+                      </View>
+                      <View style={styles.profileNudgeBadge}>
+                        <Text style={styles.profileNudgeBadgeText}>{counts.sessions}</Text>
+                      </View>
+                    </PressableScale>
+                  </Animated.View>
+                )}
+
                 {/* Nearby Chargers */}
                 <Animated.View entering={FadeInDown.delay(300).duration(350)}>
                   <SectionTitle
                     title="Nearby Chargers"
-                    subtitle="Quick picks around you"
+                    subtitle="Sorted by distance from you"
                     actionLabel="See All"
                     onAction={() => router.push("/(app)/(tabs)/discover" as any)}
                   />
@@ -217,6 +365,10 @@ export default function DriverHomeScreen() {
                           suburb={item.suburb}
                           powerKw={item.maxPowerKw}
                           pricePerKwh={item.pricingPerKwh}
+                          distanceLabel={item.distanceKm !== null ? formatDistance(item.distanceKm) : undefined}
+                          isNearest={index === 0}
+                          images={item.images}
+                          connectorTypes={item.connectors?.map((c) => c.type)}
                           onPress={() => router.push(`/(app)/chargers/${item.id}` as any)}
                         />
                       </AnimatedListItem>
@@ -280,6 +432,33 @@ const styles = StyleSheet.create({
     letterSpacing: -0.5,
     fontFamily: "Syne_700Bold",
   },
+  notifBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  notifBadge: {
+    position: "absolute",
+    top: -2,
+    right: -2,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: Colors.error,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 4,
+    borderWidth: 2,
+    borderColor: "rgba(0,0,0,0.3)",
+  },
+  notifBadgeText: {
+    fontSize: 9,
+    fontWeight: "800",
+    color: "#FFFFFF",
+  },
   heroStatsRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -319,11 +498,29 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.25)",
   },
 
+  // Announcement
+  announcementBanner: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: Spacing.sm,
+    padding: Spacing.md,
+    borderRadius: Radius.lg,
+    marginBottom: Spacing.md,
+  },
+  announcementTitle: {
+    ...Typography.cardTitle,
+    fontSize: 13,
+  },
+  announcementBody: {
+    ...Typography.caption,
+    marginTop: 2,
+  },
+
   // Active booking
   activeCard: {
     backgroundColor: Colors.surface,
     borderRadius: Radius.xl,
-    marginBottom: Spacing.lg,
+    marginBottom: Spacing.md,
     overflow: "hidden",
     ...Shadows.card,
   },
@@ -345,11 +542,28 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  activeLabelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.xs,
+  },
   activeLabel: {
     fontSize: 11,
     fontWeight: "600",
     color: Colors.primary,
     textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  liveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: Colors.success,
+  },
+  liveText: {
+    fontSize: 9,
+    fontWeight: "800",
+    color: Colors.success,
     letterSpacing: 0.5,
   },
   activeName: {
@@ -370,7 +584,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface,
     borderRadius: Radius.xl,
     padding: Spacing.lg,
-    marginBottom: Spacing.lg,
+    marginBottom: Spacing.md,
     gap: Spacing.md,
     borderWidth: 1,
     borderColor: Colors.border,
@@ -392,6 +606,40 @@ const styles = StyleSheet.create({
   discoverSubtitle: {
     ...Typography.caption,
     marginTop: 2,
+  },
+
+  // Nearest charger
+  nearestCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.lg,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+    gap: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.primaryLight,
+    ...Shadows.subtle,
+  },
+  nearestIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.primaryLight,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  nearestTitle: {
+    ...Typography.caption,
+    color: Colors.primary,
+    fontWeight: "600",
+    textTransform: "uppercase",
+    letterSpacing: 0.3,
+    fontSize: 10,
+  },
+  nearestName: {
+    ...Typography.cardTitle,
+    marginTop: 1,
   },
 
   // Quick Actions
@@ -420,6 +668,70 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "600",
     color: Colors.textPrimary,
+  },
+
+  // Nudges
+  nudgeCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.lg,
+    padding: Spacing.md,
+    marginBottom: Spacing.sm,
+    gap: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    ...Shadows.subtle,
+  },
+  nudgeIconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.primaryLight,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  nudgeTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: Colors.textPrimary,
+  },
+  nudgeSubtitle: {
+    ...Typography.caption,
+    marginTop: 1,
+  },
+  profileNudge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: Colors.warningLight,
+    borderRadius: Radius.lg,
+    padding: Spacing.md,
+    marginBottom: Spacing.sm,
+    gap: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.warning + "33",
+  },
+  profileNudgeIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.warning + "22",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  profileNudgeBadge: {
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: Colors.error,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 4,
+  },
+  profileNudgeBadgeText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#FFFFFF",
   },
 
   // Nearby

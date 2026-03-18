@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { Image, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { Tabs, useRouter } from "expo-router";
+import { Tabs } from "expo-router";
 import { useAuth } from "@/src/features/auth/auth-context";
 import { BadgeWrapper } from "@/src/components";
 import { Colors, Shadows, Typography } from "@/src/features/shared/theme";
@@ -35,9 +35,8 @@ const sharedOptions = {
 };
 
 export default function AppTabsLayout() {
-  const router = useRouter();
   const { profile } = useAuth();
-  const { counts, targets } = useBadgeCounts();
+  const { counts } = useBadgeCounts();
   const role = profile?.role || "driver";
 
   const isDriver = role === "driver";
@@ -80,6 +79,15 @@ export default function AppTabsLayout() {
       </BadgeWrapper>
     ),
     [counts.sessions]
+  );
+
+  const AdminVerifyIcon = useCallback(
+    ({ color, size }: { color: string; size: number }) => (
+      <BadgeWrapper count={counts.pendingVerifications}>
+        <Ionicons name="shield-checkmark" size={size} color={color} />
+      </BadgeWrapper>
+    ),
+    [counts.pendingVerifications]
   );
 
   const ProfileTabIcon = useCallback(
@@ -152,14 +160,6 @@ export default function AppTabsLayout() {
           href: isDriver ? undefined : null,
           tabBarIcon: BookingsIcon,
         }}
-        listeners={{
-          tabPress: (event) => {
-            if (counts.sessions > 0) {
-              event.preventDefault();
-              router.push("/(app)/session-history?filter=unrated" as any);
-            }
-          },
-        }}
       />
 
       {/* Host tabs */}
@@ -170,14 +170,6 @@ export default function AppTabsLayout() {
           href: isHost ? undefined : null,
           tabBarIcon: HostHomeIcon,
         }}
-        listeners={{
-          tabPress: (event) => {
-            if (counts.messages > 0) {
-              event.preventDefault();
-              router.push("/(app)/notifications" as any);
-            }
-          },
-        }}
       />
       <Tabs.Screen
         name="host-chargers"
@@ -186,14 +178,6 @@ export default function AppTabsLayout() {
           href: isHost ? undefined : null,
           tabBarIcon: HostChargersIcon,
         }}
-        listeners={{
-          tabPress: (event) => {
-            if (counts.chargerUpdates > 0 && targets.chargerUpdateChargerId) {
-              event.preventDefault();
-              router.push(`/(app)/chargers/${targets.chargerUpdateChargerId}?fromBadge=chargerUpdates` as any);
-            }
-          },
-        }}
       />
       <Tabs.Screen
         name="host-bookings"
@@ -201,14 +185,6 @@ export default function AppTabsLayout() {
           title: "Bookings",
           href: isHost ? undefined : null,
           tabBarIcon: HostBookingsIcon,
-        }}
-        listeners={{
-          tabPress: (event) => {
-            if (counts.sessions > 0) {
-              event.preventDefault();
-              router.push("/(app)/session-history?filter=unrated" as any);
-            }
-          },
         }}
       />
 
@@ -226,7 +202,7 @@ export default function AppTabsLayout() {
         options={{
           title: "Verify",
           href: isAdmin ? undefined : null,
-          tabBarIcon: icon("shield-checkmark"),
+          tabBarIcon: AdminVerifyIcon,
         }}
       />
       <Tabs.Screen
@@ -253,17 +229,6 @@ export default function AppTabsLayout() {
           title: "Profile",
           href: isDriver || isHost ? undefined : null,
           tabBarIcon: ProfileTabIcon,
-        }}
-        listeners={{
-          tabPress: (event) => {
-            if (counts.profile > 0) {
-              event.preventDefault();
-              const focusField = targets.profileMissingField
-                ? `?focusField=${targets.profileMissingField}`
-                : "";
-              router.push(`/(app)/(tabs)/profile${focusField}` as any);
-            }
-          },
         }}
       />
 

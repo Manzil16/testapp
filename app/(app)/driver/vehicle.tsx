@@ -16,6 +16,7 @@ import {
 } from "@/src/components";
 import { useAuth } from "@/src/features/auth/auth-context";
 import { useVehicleProfile } from "@/src/hooks";
+import { AppConfig } from "@/src/constants/app";
 
 function toNumber(value: string, fallback: number) {
   const parsed = Number(value);
@@ -31,13 +32,13 @@ export default function VehicleProfileScreen() {
 
   const { data, isLoading, error, refresh, saveVehicle } = useVehicleProfile(userId);
 
-  const [make, setMake] = useState("Tesla");
-  const [model, setModel] = useState("Model Y");
-  const [year, setYear] = useState("2024");
-  const [batteryCapacityKWh, setBatteryCapacityKWh] = useState("75");
-  const [maxRangeKm, setMaxRangeKm] = useState("505");
-  const [efficiencyWhKm, setEfficiencyWhKm] = useState("155");
-  const [reservePercent, setReservePercent] = useState("12");
+  const [make, setMake] = useState<string>(AppConfig.VEHICLE_DEFAULTS.make);
+  const [model, setModel] = useState<string>(AppConfig.VEHICLE_DEFAULTS.model);
+  const [year, setYear] = useState(String(AppConfig.VEHICLE_DEFAULTS.year));
+  const [batteryCapacityKWh, setBatteryCapacityKWh] = useState(String(AppConfig.VEHICLE_DEFAULTS.batteryCapacityKwh));
+  const [maxRangeKm, setMaxRangeKm] = useState(String(AppConfig.VEHICLE_DEFAULTS.maxRangeKm));
+  const [efficiencyWhKm, setEfficiencyWhKm] = useState(String(AppConfig.VEHICLE_DEFAULTS.efficiencyWhKm));
+  const [reservePercent, setReservePercent] = useState(String(AppConfig.VEHICLE_DEFAULTS.reservePercent));
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -68,11 +69,11 @@ export default function VehicleProfileScreen() {
           name: `${make} ${model}`.trim(),
           make: make.trim() || "Unknown",
           model: model.trim() || "Unknown",
-          year: Math.max(2010, toNumber(year, 2024)),
-          batteryCapacityKWh: Math.max(20, toNumber(batteryCapacityKWh, 60)),
-          maxRangeKm: Math.max(120, toNumber(maxRangeKm, 350)),
-          efficiencyKWhPer100Km: Math.max(8, toNumber(efficiencyWhKm, 155) / 10),
-          defaultReservePercent: Math.max(5, Math.min(40, toNumber(reservePercent, 12))),
+          year: Math.max(AppConfig.VEHICLE_DEFAULTS.bounds.minYear, toNumber(year, AppConfig.VEHICLE_DEFAULTS.year)),
+          batteryCapacityKWh: Math.max(AppConfig.VEHICLE_DEFAULTS.bounds.minBatteryKwh, toNumber(batteryCapacityKWh, AppConfig.VEHICLE_DEFAULTS.bounds.fallbackBatteryKwh)),
+          maxRangeKm: Math.max(AppConfig.VEHICLE_DEFAULTS.bounds.minRangeKm, toNumber(maxRangeKm, AppConfig.VEHICLE_DEFAULTS.bounds.fallbackRangeKm)),
+          efficiencyKWhPer100Km: Math.max(AppConfig.VEHICLE_DEFAULTS.bounds.minEfficiencyKwhPer100, toNumber(efficiencyWhKm, AppConfig.VEHICLE_DEFAULTS.efficiencyWhKm) / 10),
+          defaultReservePercent: Math.max(AppConfig.VEHICLE_DEFAULTS.bounds.minReservePercent, Math.min(AppConfig.VEHICLE_DEFAULTS.bounds.maxReservePercent, toNumber(reservePercent, AppConfig.VEHICLE_DEFAULTS.reservePercent))),
         },
         data.primaryVehicle?.id
       );

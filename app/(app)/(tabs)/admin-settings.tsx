@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Alert, Platform, StyleSheet, Text, ToastAndroid } from "react-native";
+import { ActivityIndicator, Alert, Platform, StyleSheet, Text, ToastAndroid, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -18,12 +18,17 @@ import {
   Spacing,
 } from "@/src/components";
 import { useAuth } from "@/src/features/auth/auth-context";
-import { useEntranceAnimation } from "@/src/hooks";
+import { useThemeColors } from "@/src/hooks/useThemeColors";
+import { useAvatarUpload, useEntranceAnimation } from "@/src/hooks";
 
 export default function AdminSettingsTabScreen() {
   const router = useRouter();
-  const { profile, updateProfileDetails, logout } = useAuth();
+  const { user, profile, updateProfileDetails, logout } = useAuth();
   const entranceStyle = useEntranceAnimation();
+  const colors = useThemeColors();
+
+  const userId = useMemo(() => user?.id, [user?.id]);
+  const { pickAndUpload, uploading, progress } = useAvatarUpload(userId);
 
   const [displayName, setDisplayName] = useState("");
   const [phone, setPhone] = useState("");
@@ -76,26 +81,36 @@ export default function AdminSettingsTabScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safe} edges={["bottom"]}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={["bottom"]}>
       <Animated.View style={[{ flex: 1 }, entranceStyle]}>
         <ScreenContainer>
           {/* Header card */}
-          <Animated.View entering={FadeIn.duration(350)} style={styles.headerCard}>
-            <PressableScale style={styles.avatarWrap}>
+          <Animated.View entering={FadeIn.duration(350)} style={[styles.headerCard, { backgroundColor: colors.surface }]}>
+            <PressableScale style={styles.avatarWrap} onPress={pickAndUpload}>
               <Avatar
                 uri={profile?.avatarUrl}
                 name={adminName}
                 size="xl"
               />
+              {uploading ? (
+                <View style={styles.uploadOverlay}>
+                  <ActivityIndicator color="#FFFFFF" />
+                  <Text style={styles.uploadText}>{Math.round(progress * 100)}%</Text>
+                </View>
+              ) : (
+                <View style={styles.cameraBadge}>
+                  <Ionicons name="camera" size={14} color={Colors.textInverse} />
+                </View>
+              )}
             </PressableScale>
-            <Text style={styles.profileName}>{adminName}</Text>
+            <Text style={[styles.profileName, { color: colors.textPrimary }]}>{adminName}</Text>
             <InfoPill label="ADMIN" variant="primary" />
-            <Text style={styles.emailText}>{profile?.email || "No email"}</Text>
+            <Text style={[styles.emailText, { color: colors.textMuted }]}>{profile?.email || "No email"}</Text>
           </Animated.View>
 
           {/* Settings Form */}
-          <Animated.View entering={FadeInDown.delay(100).duration(350)} style={styles.formSection}>
-            <Text style={styles.sectionLabel}>Account Details</Text>
+          <Animated.View entering={FadeInDown.delay(100).duration(350)} style={[styles.formSection, { backgroundColor: colors.surface }]}>
+            <Text style={[styles.sectionLabel, { color: colors.textPrimary }]}>Account Details</Text>
 
             <InputField
               label="Display Name"
@@ -159,6 +174,32 @@ const styles = StyleSheet.create({
   },
   avatarWrap: {
     marginBottom: Spacing.md,
+    position: "relative",
+  },
+  uploadOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: Radius.full,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  uploadText: {
+    ...Typography.caption,
+    color: "#FFFFFF",
+    marginTop: 2,
+  },
+  cameraBadge: {
+    position: "absolute",
+    bottom: 2,
+    right: 2,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: Colors.accent,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: "rgba(0,0,0,0.3)",
   },
   profileName: {
     fontSize: 22,

@@ -9,6 +9,21 @@ const CHARGER_BUCKET = "charger-images";
 const MAX_WIDTH = 1200;
 const QUALITY = 0.8;
 
+/**
+ * Ensures a value is a full public URL. If it's a storage key/path,
+ * constructs the public URL from Supabase storage.
+ */
+export function ensurePublicUrl(urlOrPath: string, bucket = CHARGER_BUCKET): string {
+  if (!urlOrPath) return "";
+  // Already a full URL
+  if (urlOrPath.startsWith("https://") || urlOrPath.startsWith("http://")) {
+    return urlOrPath;
+  }
+  // It's a relative storage key — construct the full URL
+  const { data } = supabase.storage.from(bucket).getPublicUrl(urlOrPath);
+  return data.publicUrl;
+}
+
 // ── Permission Helpers ──
 
 async function requestMediaPermission(): Promise<boolean> {
@@ -96,6 +111,11 @@ export async function captureImage(
 
 // ── Upload Helpers ──
 
+/**
+ * Standard React Native upload using FormData.
+ * This is the most reliable approach — RN's FormData natively
+ * reads from file:// URIs and streams the actual bytes.
+ */
 async function uploadToStorage(
   bucket: string,
   filePath: string,
@@ -106,23 +126,41 @@ async function uploadToStorage(
   onProgress?.(0.1);
   const compressedUri = await compressImage(uri);
 
-  // Fetch as blob
+  // Build FormData with the local file URI — RN handles file:// natively
   onProgress?.(0.3);
-  const response = await fetch(compressedUri);
-  const blob = await response.blob();
+  const ext = filePath.split(".").pop() || "jpg";
+  const formData = new FormData();
+  formData.append("", {
+    uri: compressedUri,
+    name: filePath.split("/").pop() || `image.${ext}`,
+    type: "image/jpeg",
+  } as any);
 
-  const contentType = "image/jpeg";
-
-  // Upload
+  // Upload via Supabase REST API directly (FormData works reliably)
   onProgress?.(0.5);
-  const { error: uploadError } = await supabase.storage
-    .from(bucket)
-    .upload(filePath, blob, {
-      contentType,
-      upsert: true,
-    });
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
 
-  if (uploadError) throw uploadError;
+  const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
+  const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
+
+  const response = await fetch(
+    `${supabaseUrl}/storage/v1/object/${bucket}/${filePath}`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token || anonKey}`,
+        apikey: anonKey,
+        "x-upsert": "true",
+      },
+      body: formData,
+    }
+  );
+
+  if (!response.ok) {
+    const errBody = await response.text();
+    throw new Error(`Upload failed (${response.status}): ${errBody}`);
+  }
 
   onProgress?.(0.9);
   const { data } = supabase.storage.from(bucket).getPublicUrl(filePath);
@@ -161,7 +199,7 @@ export async function uploadAvatarImage(
 ): Promise<string> {
   onProgress?.(0.1);
 
-  // Compress and crop to square
+  // Compress to square
   const compressed = await ImageManipulator.manipulateAsync(
     uri,
     [{ resize: { width: 400 } }],
@@ -171,18 +209,39 @@ export async function uploadAvatarImage(
   onProgress?.(0.3);
   const fileName = `avatars/${userId}/${uuidv4()}.jpg`;
 
-  const response = await fetch(compressed.uri);
-  const blob = await response.blob();
+  // Build FormData
+  const formData = new FormData();
+  formData.append("", {
+    uri: compressed.uri,
+    name: `${uuidv4()}.jpg`,
+    type: "image/jpeg",
+  } as any);
 
+  // Upload via REST
   onProgress?.(0.5);
-  const { error: uploadError } = await supabase.storage
-    .from(CHARGER_BUCKET)
-    .upload(fileName, blob, {
-      contentType: "image/jpeg",
-      upsert: true,
-    });
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
 
-  if (uploadError) throw uploadError;
+  const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
+  const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
+
+  const response = await fetch(
+    `${supabaseUrl}/storage/v1/object/${CHARGER_BUCKET}/${fileName}`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token || anonKey}`,
+        apikey: anonKey,
+        "x-upsert": "true",
+      },
+      body: formData,
+    }
+  );
+
+  if (!response.ok) {
+    const errBody = await response.text();
+    throw new Error(`Avatar upload failed (${response.status}): ${errBody}`);
+  }
 
   onProgress?.(0.9);
   const { data } = supabase.storage.from(CHARGER_BUCKET).getPublicUrl(fileName);
