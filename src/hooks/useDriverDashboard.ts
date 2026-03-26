@@ -47,7 +47,10 @@ export function useDriverDashboard(userId?: string) {
   const activeBooking = useMemo(
     () =>
       bookings.find(
-        (b: Booking) => b.status === "approved" || b.status === "in_progress"
+        (b: Booking) =>
+          b.status === "requested" ||
+          b.status === "approved" ||
+          b.status === "in_progress"
       ) ?? null,
     [bookings]
   );

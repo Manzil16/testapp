@@ -75,7 +75,8 @@ export function useDriverBookings(userId?: string) {
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["bookings"] });
 
   const cancelMutation = useMutation({
-    mutationFn: (bookingId: string) => updateBookingStatus(bookingId, "cancelled"),
+    mutationFn: ({ bookingId, reason }: { bookingId: string; reason?: string }) =>
+      updateBookingStatus(bookingId, "cancelled", undefined, reason),
     onSuccess: invalidate,
   });
 
@@ -85,7 +86,10 @@ export function useDriverBookings(userId?: string) {
   });
 
   const chargingMutation = useMutation({
-    mutationFn: (bookingId: string) => updateArrivalSignal(bookingId, "charging"),
+    mutationFn: async (bookingId: string) => {
+      await updateArrivalSignal(bookingId, "charging");
+      await updateBookingStatus(bookingId, "in_progress");
+    },
     onSuccess: invalidate,
   });
 
@@ -112,7 +116,8 @@ export function useDriverBookings(userId?: string) {
       await Promise.all([bookingsQuery.refetch(), chargersQuery.refetch(), reviewsQuery.refetch()]);
     },
     actions: {
-      cancelBooking: (bookingId: string) => cancelMutation.mutateAsync(bookingId),
+      cancelBooking: (bookingId: string, reason?: string) =>
+        cancelMutation.mutateAsync({ bookingId, reason }),
       markArrived: (bookingId: string) => arriveMutation.mutateAsync(bookingId),
       startCharging: (bookingId: string) => chargingMutation.mutateAsync(bookingId),
       leaveReview: (booking: Booking, rating: number, comment: string) =>

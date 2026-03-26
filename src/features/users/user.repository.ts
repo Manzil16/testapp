@@ -7,6 +7,9 @@ function mapRow(row: Record<string, unknown>): UserProfile {
     email: row.email as string,
     displayName: row.display_name as string,
     role: row.role as AppRole,
+    isDriver: row.is_driver as boolean ?? true,
+    isHost: row.is_host as boolean ?? false,
+    isAdmin: row.is_admin as boolean ?? false,
     phone: (row.phone as string) || undefined,
     avatarUrl: (row.avatar_url as string) || undefined,
     preferredReservePercent: row.preferred_reserve_percent as number,
@@ -25,6 +28,9 @@ export async function upsertUserProfile(
     email: payload.email,
     display_name: payload.displayName,
     role: payload.role,
+    is_driver: payload.isDriver ?? (payload.role === "driver" || payload.role === "admin"),
+    is_host: payload.isHost ?? (payload.role === "host" || payload.role === "admin"),
+    is_admin: payload.role === "admin",
     phone: payload.phone || null,
     preferred_reserve_percent: payload.preferredReservePercent ?? 12,
   });
@@ -64,14 +70,42 @@ export async function updateUserProfile(
   if (error) throw error;
 }
 
-export async function listAllProfiles(): Promise<UserProfile[]> {
-  const { data, error } = await supabase
+export interface PaginatedResult<T> {
+  items: T[];
+  total: number;
+  hasMore: boolean;
+}
+
+export async function listAllProfiles(options?: {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+}): Promise<PaginatedResult<UserProfile>> {
+  const page = options?.page ?? 0;
+  const pageSize = options?.pageSize ?? 50;
+  const search = options?.search?.trim();
+
+  let query = supabase
     .from("profiles")
-    .select("*")
+    .select("*", { count: "exact" })
     .order("created_at", { ascending: false })
-    .limit(300);
+    .range(page * pageSize, (page + 1) * pageSize - 1);
+
+  if (search) {
+    query = query.or(
+      `display_name.ilike.%${search}%,email.ilike.%${search}%`
+    );
+  }
+
+  const { data, error, count } = await query;
   if (error) throw error;
-  return (data as Record<string, unknown>[]).map(mapRow);
+
+  const total = count ?? 0;
+  return {
+    items: (data as Record<string, unknown>[]).map(mapRow),
+    total,
+    hasMore: (page + 1) * pageSize < total,
+  };
 }
 
 export async function deleteProfile(userId: string): Promise<void> {

@@ -12,7 +12,7 @@ import { Colors, Radius, Spacing } from "@/src/features/shared/theme";
 import { ensurePublicUrl } from "@/src/services/imageService";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
-const GALLERY_HEIGHT = 240;
+const GALLERY_HEIGHT = 280;
 
 interface ImageGalleryProps {
   images: string[];
@@ -64,7 +64,8 @@ export function ImageGallery({
             <Image
               source={{ uri: safeUri }}
               style={[styles.image, { height }]}
-              contentFit="cover"
+              contentFit="contain"
+              contentPosition="center"
               transition={200}
             />
           );
@@ -96,12 +97,13 @@ export function ImageGallery({
 const styles = StyleSheet.create({
   container: {
     position: "relative",
-    backgroundColor: Colors.surfaceAlt,
+    backgroundColor: "#111",
     borderRadius: Radius.lg,
     overflow: "hidden",
   },
   image: {
     width: SCREEN_WIDTH,
+    backgroundColor: "#111",
   },
   placeholder: {
     backgroundColor: Colors.surfaceAlt,

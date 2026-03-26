@@ -83,7 +83,7 @@ export function useBadgeCounts() {
     queryKey: ["notifications", userId],
     queryFn: () => listNotificationsByUser(userId!),
     enabled: Boolean(userId),
-    refetchInterval: 30_000,
+    refetchInterval: 60_000,
   });
 
   const bookingsQuery = useQuery({
@@ -98,12 +98,12 @@ export function useBadgeCounts() {
     enabled: Boolean(userId),
   });
 
-  const isAdmin = profile?.role === "admin";
+  const isAdmin = profile?.isAdmin ?? false;
   const pendingChargersQuery = useQuery({
     queryKey: ["chargers", "pending"],
     queryFn: () => listChargers({ status: "pending" }),
     enabled: Boolean(userId) && isAdmin,
-    refetchInterval: 30_000,
+    refetchInterval: 60_000,
   });
 
   const seen = seenQuery.data ?? DEFAULT_SEEN;

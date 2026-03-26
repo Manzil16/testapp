@@ -78,7 +78,7 @@ export default function DriverHomeScreen() {
             data={[]}
             keyExtractor={(_, index) => String(index)}
             renderItem={() => null}
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#00BFA5" />}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.content}
             ListHeaderComponent={
@@ -168,24 +168,42 @@ export default function DriverHomeScreen() {
                     <PressableScale
                       style={styles.activeCard}
                       onPress={() =>
-                        router.push(`/(app)/chargers/${activeBooking.chargerId}` as any)
+                        router.push("/(app)/(tabs)/bookings" as any)
                       }
                     >
-                      <View style={styles.activePulse} />
+                      {activeBooking.status === "in_progress" && <View style={styles.activePulse} />}
                       <View style={styles.activeContent}>
                         <View style={styles.activeIconCircle}>
-                          <Ionicons name="flash" size={20} color={Colors.primary} />
+                          <Ionicons
+                            name={activeBooking.status === "in_progress" ? "flash" : activeBooking.status === "approved" ? "checkmark-circle" : "time"}
+                            size={20}
+                            color={Colors.primary}
+                          />
                         </View>
                         <View style={{ flex: 1 }}>
                           <View style={styles.activeLabelRow}>
-                            <Text style={styles.activeLabel}>Active Session</Text>
-                            <View style={styles.liveDot} />
-                            <Text style={styles.liveText}>LIVE</Text>
+                            <Text style={styles.activeLabel}>
+                              {activeBooking.status === "in_progress"
+                                ? "Charging"
+                                : activeBooking.status === "approved"
+                                ? "Booking Approved"
+                                : "Pending Approval"}
+                            </Text>
+                            {activeBooking.status === "in_progress" && (
+                              <>
+                                <View style={styles.liveDot} />
+                                <Text style={styles.liveText}>LIVE</Text>
+                              </>
+                            )}
                           </View>
                           <Text style={styles.activeName}>{activeChargerName}</Text>
                           <Text style={styles.activeTime}>
-                            Started{" "}
                             {new Date(activeBooking.startTimeIso).toLocaleTimeString(undefined, {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                            {" — "}
+                            {new Date(activeBooking.endTimeIso).toLocaleTimeString(undefined, {
                               hour: "2-digit",
                               minute: "2-digit",
                             })}

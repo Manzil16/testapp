@@ -48,6 +48,12 @@ export function InputField({
     ? Colors.borderFocus
     : Colors.border;
 
+  const bgColor = error
+    ? Colors.errorLight
+    : focused
+    ? Colors.surface
+    : Colors.surfaceAlt;
+
   return (
     <View style={[styles.wrapper, containerStyle]}>
       {/* Label */}
@@ -57,7 +63,7 @@ export function InputField({
       <View
         style={[
           styles.inputRow,
-          { borderColor },
+          { borderColor, backgroundColor: bgColor },
           focused && styles.inputFocused,
           multiline && styles.multiline,
         ]}
@@ -113,20 +119,22 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.lg,
   },
   label: {
-    ...Typography.label,
-    marginBottom: Spacing.sm,
+    fontSize: 12,
+    fontWeight: "600",
+    color: Colors.textSecondary,
+    fontFamily: "DMSans_600SemiBold",
+    marginBottom: 6,
   },
   inputRow: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: Colors.surfaceAlt,
     borderWidth: 1.5,
     borderRadius: Radius.input,
     minHeight: 48,
     paddingHorizontal: Spacing.md,
   },
   inputFocused: {
-    backgroundColor: Colors.surfaceElevated,
+    borderWidth: 2,
   },
   multiline: {
     alignItems: "flex-start",
@@ -143,6 +151,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.textPrimary,
     paddingVertical: 0,
+    fontFamily: "DMSans_400Regular",
   },
   inputWithLeft: {
     // padding handled by leftIcon margin

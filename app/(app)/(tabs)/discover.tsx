@@ -1,4 +1,4 @@
-import { useMemo, useRef } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useRouter } from "expo-router";
 import {
   FlatList,
@@ -9,9 +9,9 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import MapView, { Callout, Circle, Marker, type Region } from "react-native-maps";
+import MapView, { Circle, Marker, type Region } from "react-native-maps";
 import { Ionicons } from "@expo/vector-icons";
-import Animated from "react-native-reanimated";
+import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import {
   AnimatedListItem,
   ChargerCardPremium,
@@ -44,6 +44,17 @@ export default function DiscoverScreen() {
 
   const { data, isLoading, error, refresh, actions } = useChargerDiscovery();
   const { refreshing, onRefresh } = useRefresh(refresh);
+  const [selectedChargerId, setSelectedChargerId] = useState<string | null>(null);
+
+  const selectedCharger = useMemo(
+    () => data.all.find((c) => c.id === selectedChargerId) ?? null,
+    [data.all, selectedChargerId]
+  );
+
+  const selectedChargerDist = useMemo(() => {
+    if (!selectedCharger || !location) return null;
+    return getDistanceKm(location.latitude, location.longitude, selectedCharger.latitude, selectedCharger.longitude);
+  }, [selectedCharger, location]);
 
   const connectorChips = useMemo(
     () => [
@@ -149,7 +160,7 @@ export default function DiscoverScreen() {
 
           {data.viewMode === "map" ? (
             <View style={styles.mapWrap}>
-              <MapView ref={mapRef} style={styles.map} initialRegion={currentRegion}>
+              <MapView ref={mapRef} style={styles.map} initialRegion={currentRegion} onPress={() => setSelectedChargerId(null)}>
                 {/* User location marker */}
                 {location && (
                   <>
@@ -172,34 +183,19 @@ export default function DiscoverScreen() {
                 )}
 
                 {/* Charger markers with price labels */}
-                {data.all.map((charger) => {
-                  const dist = location
-                    ? getDistanceKm(location.latitude, location.longitude, charger.latitude, charger.longitude)
-                    : null;
-
-                  return (
-                    <Marker
-                      key={charger.id}
-                      coordinate={{ latitude: charger.latitude, longitude: charger.longitude }}
-                    >
-                      <View style={styles.priceMarker}>
-                        <Text style={styles.priceMarkerText}>
-                          ${charger.pricingPerKwh.toFixed(2)}
-                        </Text>
-                      </View>
-                      <Callout onPress={() => router.push(`/(app)/chargers/${charger.id}` as any)}>
-                        <View style={styles.callout}>
-                          <Text style={styles.calloutTitle}>{charger.name}</Text>
-                          <Text style={styles.calloutText}>{charger.maxPowerKw}kW</Text>
-                          <Text style={styles.calloutText}>${charger.pricingPerKwh.toFixed(2)}/kWh</Text>
-                          {dist !== null && (
-                            <Text style={styles.calloutText}>{formatDistance(dist)} away</Text>
-                          )}
-                        </View>
-                      </Callout>
-                    </Marker>
-                  );
-                })}
+                {data.all.map((charger) => (
+                  <Marker
+                    key={charger.id}
+                    coordinate={{ latitude: charger.latitude, longitude: charger.longitude }}
+                    onPress={() => setSelectedChargerId(charger.id)}
+                  >
+                    <View style={[styles.priceMarker, selectedChargerId === charger.id && styles.priceMarkerActive]}>
+                      <Text style={[styles.priceMarkerText, selectedChargerId === charger.id && styles.priceMarkerTextActive]}>
+                        ${charger.pricingPerKwh.toFixed(2)}
+                      </Text>
+                    </View>
+                  </Marker>
+                ))}
               </MapView>
 
               <PrimaryCTA
@@ -207,6 +203,43 @@ export default function DiscoverScreen() {
                 onPress={() => mapRef.current?.animateToRegion(currentRegion, 260)}
                 style={styles.recenterBtn}
               />
+
+              {/* Absolute-positioned preview card */}
+              {selectedCharger && (
+                <Animated.View entering={FadeIn.duration(200)} exiting={FadeOut.duration(150)} style={styles.previewCard}>
+                  <PressableScale onPress={() => router.push(`/(app)/chargers/${selectedCharger.id}` as any)}>
+                    <View style={styles.previewContent}>
+                      <View style={styles.previewInfo}>
+                        <Text style={Typography.cardTitle} numberOfLines={1}>{selectedCharger.name}</Text>
+                        <View style={styles.previewMeta}>
+                          <Text style={Typography.body}>
+                            ${selectedCharger.pricingPerKwh.toFixed(2)}/kWh
+                          </Text>
+                          <Text style={Typography.caption}> · {selectedCharger.maxPowerKw}kW</Text>
+                          {selectedChargerDist !== null && (
+                            <Text style={Typography.caption}> · {formatDistance(selectedChargerDist)}</Text>
+                          )}
+                        </View>
+                        <View style={styles.previewBadgeRow}>
+                          {selectedCharger.connectors.slice(0, 2).map((c) => (
+                            <View key={c.type} style={styles.previewBadge}>
+                              <Text style={styles.previewBadgeText}>{c.type}</Text>
+                            </View>
+                          ))}
+                          <View style={[styles.previewBadge, { backgroundColor: Colors.successLight }]}>
+                            <Text style={[styles.previewBadgeText, { color: Colors.success }]}>
+                              {selectedCharger.status === "approved" ? "Available" : "Pending"}
+                            </Text>
+                          </View>
+                        </View>
+                      </View>
+                      <View style={styles.previewArrow}>
+                        <Ionicons name="chevron-forward" size={20} color={Colors.textMuted} />
+                      </View>
+                    </View>
+                  </PressableScale>
+                </Animated.View>
+              )}
 
               {!data.all.length && !isLoading ? (
                 <EmptyStateCard
@@ -240,7 +273,7 @@ export default function DiscoverScreen() {
                 <FlatList
                   data={chargersWithDistance}
                   keyExtractor={(item) => item.id}
-                  refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+                  refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#00BFA5" />}
                   onEndReached={actions.loadMore}
                   onEndReachedThreshold={0.4}
                   showsVerticalScrollIndicator={false}
@@ -371,19 +404,57 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: Colors.textPrimary,
   },
-  callout: {
-    minWidth: 140,
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.sm,
-    backgroundColor: "#FFFFFF",
+  priceMarkerActive: {
+    backgroundColor: Colors.accent,
+    borderColor: Colors.accent,
   },
-  calloutTitle: {
-    ...Typography.cardTitle,
-    color: "#111827",
+  priceMarkerTextActive: {
+    color: Colors.textInverse,
   },
-  calloutText: {
-    ...Typography.caption,
-    color: "#6B7280",
+  previewCard: {
+    position: "absolute",
+    bottom: 90,
+    left: Spacing.lg,
+    right: Spacing.lg,
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.xl,
+    padding: Spacing.lg,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 6,
+    zIndex: 10,
+  },
+  previewContent: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  previewInfo: {
+    flex: 1,
+    gap: 4,
+  },
+  previewMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  previewBadgeRow: {
+    flexDirection: "row",
+    gap: Spacing.xs,
+    marginTop: 4,
+  },
+  previewBadge: {
+    backgroundColor: Colors.accentLight,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: Radius.pill,
+  },
+  previewBadgeText: {
+    ...Typography.badge,
+    color: Colors.accent,
+  },
+  previewArrow: {
+    marginLeft: Spacing.sm,
   },
   emptyOverlay: {
     position: "absolute",

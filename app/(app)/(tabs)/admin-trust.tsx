@@ -27,6 +27,14 @@ import { AppConfig } from "@/src/constants/app";
 import { useEntranceAnimation, useRefresh } from "@/src/hooks";
 import { useThemeColors } from "@/src/hooks/useThemeColors";
 
+function formatResponseTime(minutes: number): string {
+  if (minutes < 1) return "< 1 min";
+  if (minutes < 60) return `${Math.round(minutes)} min`;
+  const hrs = Math.floor(minutes / 60);
+  const mins = Math.round(minutes % 60);
+  return mins > 0 ? `${hrs}h ${mins}m` : `${hrs}h`;
+}
+
 export default function AdminTrustTabScreen() {
   const entranceStyle = useEntranceAnimation();
   const colors = useThemeColors();
@@ -54,12 +62,17 @@ export default function AdminTrustTabScreen() {
   const hostsQuery = useQuery({
     queryKey: ["profiles", "hosts", hostIds],
     queryFn: async () => {
-      const results: Record<string, string> = {};
+      const results: Record<string, { displayName: string; avgResponseMinutes?: number }> = {};
       await Promise.all(
         hostIds.map(async (id) => {
           try {
             const profile = await getUserProfile(id);
-            if (profile) results[id] = profile.displayName;
+            if (profile) {
+              results[id] = {
+                displayName: profile.displayName,
+                avgResponseMinutes: (profile as any).avgResponseMinutes,
+              };
+            }
           } catch { /* skip */ }
         })
       );
@@ -68,7 +81,12 @@ export default function AdminTrustTabScreen() {
     enabled: hostIds.length > 0,
   });
 
-  const hostNames = hostsQuery.data ?? {};
+  const hostProfiles = hostsQuery.data ?? {};
+  const hostNames: Record<string, string> = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const [id, p] of Object.entries(hostProfiles)) map[id] = p.displayName;
+    return map;
+  }, [hostProfiles]);
 
   const refresh = async () => {
     await chargersQuery.refetch();
@@ -153,7 +171,7 @@ export default function AdminTrustTabScreen() {
           <FlatList
             data={watchlist}
             keyExtractor={(item) => item.id}
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#00BFA5" />}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.listContent}
             renderItem={({ item, index }) => {
@@ -217,6 +235,12 @@ export default function AdminTrustTabScreen() {
                       <View style={styles.hostRow}>
                         <Avatar name={hostName} size="sm" />
                         <Text style={styles.hostText}>Host: {hostName}</Text>
+                        {hostProfiles[item.hostUserId]?.avgResponseMinutes != null && (
+                          <InfoPill
+                            label={`⏱ ${formatResponseTime(hostProfiles[item.hostUserId].avgResponseMinutes!)}`}
+                            variant="info"
+                          />
+                        )}
                       </View>
 
                       {/* Actions */}
@@ -301,6 +325,11 @@ export default function AdminTrustTabScreen() {
                   {hostNames[selected.hostUserId] || selected.hostUserId.slice(0, 12)}
                 </Text>
                 <Text style={styles.sheetHostLabel}>Charger Host</Text>
+                {hostProfiles[selected.hostUserId]?.avgResponseMinutes != null && (
+                  <Text style={styles.sheetHostLabel}>
+                    Avg response: {formatResponseTime(hostProfiles[selected.hostUserId].avgResponseMinutes!)}
+                  </Text>
+                )}
               </View>
             </View>
 

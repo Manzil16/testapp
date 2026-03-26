@@ -1,334 +1,366 @@
-import { useMemo, useState } from "react";
-import { FlatList, RefreshControl, StyleSheet, Text, View } from "react-native";
+import { useCallback, useState } from "react";
+import {
+  Alert,
+  FlatList,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import Animated, { FadeIn } from "react-native-reanimated";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import Animated, { FadeInDown, SlideOutLeft } from "react-native-reanimated";
+import Slider from "@react-native-community/slider";
 import {
-  AnimatedListItem,
-  Avatar,
-  BottomSheet,
+  EmptyStateCard,
+  ImageGallery,
   InfoPill,
   InputField,
-  PressableScale,
+  PremiumCard,
   PrimaryCTA,
   ScreenContainer,
+  SecondaryButton,
+  SectionTitle,
+  Typography,
+  Colors,
+  Radius,
+  Spacing,
+  Shadows,
 } from "@/src/components";
-import { Colors, Radius, Shadows, Spacing, Typography } from "@/src/features/shared/theme";
-import { useAuth } from "@/src/features/auth/auth-context";
-import {
-  reviewVerificationRequest,
-} from "@/src/features/verification/verification.repository";
-import type { VerificationStatus } from "@/src/features/verification/verification.types";
-import { listChargers, updateChargerStatus } from "@/src/features/chargers/charger.repository";
-import type { Charger, ChargerStatus } from "@/src/features/chargers/charger.types";
-import { createNotification } from "@/src/features/notifications/notification.repository";
-import { getUserProfile } from "@/src/features/users/user.repository";
-import { AppConfig } from "@/src/constants/app";
-import { useEntranceAnimation, useRefresh } from "@/src/hooks";
-import { useThemeColors } from "@/src/hooks/useThemeColors";
+import { useAdminVerify, type PendingChargerWithHost } from "@/src/hooks/useAdminVerify";
+import { getDetailImageUrl } from "@/src/services/imageService";
+import { useRefresh } from "@/src/hooks";
 
-export default function AdminVerifyTabScreen() {
-  const { user } = useAuth();
-  const entranceStyle = useEntranceAnimation();
-  const colors = useThemeColors();
-  const queryClient = useQueryClient();
-  const reviewerUserId = user?.id;
+interface RubricState {
+  photos: number;
+  specs: number;
+  location: number;
+  access: number;
+  pricing: number;
+}
 
-  const [selected, setSelected] = useState<Charger | null>(null);
-  const [rejectTarget, setRejectTarget] = useState<Charger | null>(null);
-  const [rejectReason, setRejectReason] = useState("");
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+function RubricSlider({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <View style={styles.rubricSlider}>
+      <View style={styles.rubricLabelRow}>
+        <Text style={Typography.body}>{label}</Text>
+        <Text style={styles.rubricValue}>{value}/20</Text>
+      </View>
+      <Slider
+        minimumValue={0}
+        maximumValue={20}
+        step={1}
+        value={value}
+        onValueChange={onChange}
+        minimumTrackTintColor={Colors.accent}
+        maximumTrackTintColor={Colors.border}
+        thumbTintColor={Colors.accent}
+      />
+    </View>
+  );
+}
 
-  // Query pending chargers directly from the chargers table
-  const pendingChargersQuery = useQuery({
-    queryKey: ["chargers", "pending"],
-    queryFn: () => listChargers({ status: "pending" }),
+function ChargerVerifyCard({
+  item,
+  onApprove,
+  onReject,
+  isApproving,
+  isRejecting,
+}: {
+  item: PendingChargerWithHost;
+  onApprove: (chargerId: string, rubric: RubricState, notes: string) => void;
+  onReject: (chargerId: string, reason: string) => void;
+  isApproving: boolean;
+  isRejecting: boolean;
+}) {
+  const [rubric, setRubric] = useState<RubricState>({
+    photos: 0,
+    specs: 0,
+    location: 0,
+    access: 0,
+    pricing: 0,
   });
+  const [notes, setNotes] = useState("");
 
-  const pendingChargers = pendingChargersQuery.data ?? [];
+  const totalScore = rubric.photos + rubric.specs + rubric.location + rubric.access + rubric.pricing;
+  const allScored = rubric.photos > 0 && rubric.specs > 0 && rubric.location > 0 && rubric.access > 0 && rubric.pricing > 0;
+  const scoreColor = totalScore >= 85 ? Colors.success : totalScore >= 45 ? Colors.warning : Colors.error;
 
-  // Resolve host profiles for display names
-  const hostIds = useMemo(() => {
-    const ids = new Set<string>();
-    for (const charger of pendingChargers) ids.add(charger.hostUserId);
-    return Array.from(ids);
-  }, [pendingChargers]);
-
-  const hostsQuery = useQuery({
-    queryKey: ["profiles", "hosts", hostIds],
-    queryFn: async () => {
-      const results: Record<string, string> = {};
-      await Promise.all(
-        hostIds.map(async (id) => {
-          try {
-            const profile = await getUserProfile(id);
-            if (profile) results[id] = profile.displayName;
-          } catch { /* skip */ }
-        })
-      );
-      return results;
-    },
-    enabled: hostIds.length > 0,
-  });
-
-  const hostNames = hostsQuery.data ?? {};
-
-  const isLoading = pendingChargersQuery.isLoading;
-
-  const refresh = async () => {
-    await pendingChargersQuery.refetch();
-  };
-  const { refreshing, onRefresh } = useRefresh(refresh);
-
-  const handleDecision = async (
-    charger: Charger,
-    status: VerificationStatus,
-    reasonNote?: string
-  ) => {
-    if (!reviewerUserId) return;
-
-    try {
-      setBusyId(charger.id);
-      setError(null);
-
-      const note = reasonNote || `Admin decision: ${status}`;
-
-      const chargerStatus: ChargerStatus =
-        status === "approved" ? "approved" : "rejected";
-
-      await updateChargerStatus(
-        charger.id,
-        chargerStatus,
-        status === "approved" ? AppConfig.VERIFICATION.approvedScore : AppConfig.VERIFICATION.rejectedScore
-      );
-
-      try {
-        await createNotification({
-          userId: charger.hostUserId,
-          type: "verification",
-          title: `Charger ${status === "approved" ? "Approved" : "Rejected"}`,
-          body:
-            status === "rejected" && note
-              ? `Your charger was rejected: ${note}`
-              : `Your charger verification request was ${status}.`,
-          metadata: {
-            chargerId: charger.id,
-          },
-        });
-      } catch {
-        // Notification delivery should not block decisions
-      }
-
-      queryClient.invalidateQueries({ queryKey: ["verifications"] });
-      queryClient.invalidateQueries({ queryKey: ["chargers"] });
-
-      if (selected?.id === charger.id) setSelected(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to process decision.");
-    } finally {
-      setBusyId(null);
+  const handleApprove = () => {
+    if (!allScored) {
+      Alert.alert("Incomplete rubric", "Please score all 5 categories before approving.");
+      return;
     }
+    onApprove(item.charger.id, rubric, notes);
+  };
+
+  const handleReject = () => {
+    if (!notes.trim()) {
+      Alert.alert("Notes required", "Please provide a reason for rejection.");
+      return;
+    }
+    onReject(item.charger.id, notes);
   };
 
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={["bottom"]}>
-      <Animated.View style={[{ flex: 1 }, entranceStyle]}>
-        <ScreenContainer scrollable={false}>
-          <Animated.View entering={FadeIn.duration(350)} style={styles.header}>
+    <Animated.View exiting={SlideOutLeft.duration(300)}>
+      <PremiumCard style={styles.card}>
+        {/* Header */}
+        <View style={styles.cardHeader}>
+          <View style={styles.hostRow}>
+            <View style={styles.hostAvatar}>
+              <Text style={styles.hostAvatarText}>
+                {item.host.displayName.charAt(0).toUpperCase()}
+              </Text>
+            </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.pageTitle}>Verification</Text>
-              <Text style={styles.pageSubtitle}>Review host charger submissions</Text>
+              <Text style={Typography.cardTitle}>{item.charger.name}</Text>
+              <Text style={Typography.caption}>
+                by {item.host.displayName} · {new Date(item.charger.createdAtIso).toLocaleDateString()}
+              </Text>
             </View>
-            {pendingChargers.length > 0 && (
-              <View style={styles.queueBadge}>
-                <Text style={styles.queueBadgeText}>{pendingChargers.length}</Text>
-              </View>
-            )}
-          </Animated.View>
+          </View>
+        </View>
 
-          {error ? (
-            <View style={styles.errorBanner}>
-              <Ionicons name="alert-circle" size={16} color={Colors.error} />
-              <Text style={styles.errorText}>{error}</Text>
-            </View>
-          ) : null}
+        {/* Image Gallery */}
+        {item.charger.images.length > 0 && (
+          <ImageGallery
+            images={item.charger.images.map((img) => getDetailImageUrl(img))}
+            height={200}
+          />
+        )}
 
+        {/* Spec Summary */}
+        <View style={styles.specRow}>
+          <InfoPill label={item.charger.address} />
+          <InfoPill label={`${item.charger.maxPowerKw}kW`} variant="primary" />
+          <InfoPill
+            label={item.charger.connectors.map((c) => c.type).join(", ")}
+          />
+          <InfoPill
+            label={`$${item.charger.pricingPerKwh.toFixed(2)}/kWh`}
+            variant="success"
+          />
+        </View>
+
+        {/* Rubric Scoring */}
+        <SectionTitle title="Verification Rubric" topSpacing={Spacing.md} />
+
+        <RubricSlider
+          label="Photos quality"
+          value={rubric.photos}
+          onChange={(v) => setRubric((prev) => ({ ...prev, photos: v }))}
+        />
+        <RubricSlider
+          label="Technical specs"
+          value={rubric.specs}
+          onChange={(v) => setRubric((prev) => ({ ...prev, specs: v }))}
+        />
+        <RubricSlider
+          label="Location accuracy"
+          value={rubric.location}
+          onChange={(v) => setRubric((prev) => ({ ...prev, location: v }))}
+        />
+        <RubricSlider
+          label="Access clarity"
+          value={rubric.access}
+          onChange={(v) => setRubric((prev) => ({ ...prev, access: v }))}
+        />
+        <RubricSlider
+          label="Pricing fairness"
+          value={rubric.pricing}
+          onChange={(v) => setRubric((prev) => ({ ...prev, pricing: v }))}
+        />
+
+        {/* Live Score */}
+        <View style={[styles.scoreRow, { borderColor: scoreColor }]}>
+          <Text style={[styles.scoreText, { color: scoreColor }]}>
+            Total: {totalScore}/100
+          </Text>
+          <Text style={[Typography.caption, { color: scoreColor }]}>
+            {totalScore >= 85 ? "Approved range" : totalScore >= 45 ? "Needs review" : "Below threshold"}
+          </Text>
+        </View>
+
+        {/* Notes */}
+        <InputField
+          label={totalScore < 85 ? "Notes (required)" : "Notes (optional)"}
+          value={notes}
+          onChangeText={setNotes}
+          placeholder="Add review notes..."
+          multiline
+        />
+
+        {/* Action Buttons */}
+        <View style={styles.actionRow}>
+          <SecondaryButton
+            label="Reject"
+            onPress={handleReject}
+            loading={isRejecting}
+            danger
+            style={styles.actionHalf}
+          />
+          <PrimaryCTA
+            label="Approve"
+            onPress={handleApprove}
+            loading={isApproving}
+            disabled={!allScored}
+            style={styles.actionHalf}
+          />
+        </View>
+      </PremiumCard>
+    </Animated.View>
+  );
+}
+
+export default function AdminVerifyScreen() {
+  const {
+    pendingChargers,
+    isLoading,
+    refetch,
+    approveCharger,
+    rejectCharger,
+    isApproving,
+    isRejecting,
+  } = useAdminVerify();
+  const { refreshing, onRefresh } = useRefresh(refetch);
+
+  const handleApprove = useCallback(
+    async (chargerId: string, rubric: RubricState, notes: string) => {
+      await approveCharger({
+        chargerId,
+        rubric: {
+          photoQuality: rubric.photos,
+          plugVerified: rubric.specs as any,
+          locationAccuracy: rubric.location,
+          hostResponse: rubric.access,
+          adminReview: rubric.pricing as any,
+        },
+        notes,
+      });
+    },
+    [approveCharger]
+  );
+
+  const handleReject = useCallback(
+    async (chargerId: string, reason: string) => {
+      await rejectCharger({ chargerId, reason });
+    },
+    [rejectCharger]
+  );
+
+  return (
+    <SafeAreaView style={styles.safe} edges={["bottom"]}>
+      <ScreenContainer>
+        <Text style={Typography.pageTitle}>Charger Verification</Text>
+        <Text style={Typography.body}>
+          {pendingChargers.length} charger{pendingChargers.length !== 1 ? "s" : ""} awaiting review
+        </Text>
+
+        {pendingChargers.length === 0 && !isLoading ? (
+          <EmptyStateCard
+            icon="✅"
+            title="No chargers awaiting review"
+            message="All charger submissions have been reviewed."
+          />
+        ) : (
           <FlatList
             data={pendingChargers}
-            keyExtractor={(item) => item.id}
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.listContent}
-            renderItem={({ item: charger, index }) => {
-              const connectorTypes = charger.connectors.map((c) => c.type).join(", ") || "Unknown";
-              const isBusy = busyId === charger.id;
-
-              return (
-                <AnimatedListItem index={index}>
-                  <PressableScale style={styles.card} onPress={() => setSelected(charger)}>
-                    <View style={styles.cardAccent} />
-                    <View style={styles.cardBody}>
-                      <View style={styles.cardTop}>
-                        <View style={styles.chargerIconCircle}>
-                          <Ionicons name="flash" size={18} color={Colors.warning} />
-                        </View>
-                        <View style={{ flex: 1 }}>
-                          <Text style={styles.chargerName} numberOfLines={1}>
-                            {charger.name}
-                          </Text>
-                          <Text style={styles.chargerLocation}>
-                            {charger.suburb}, {charger.state}
-                          </Text>
-                        </View>
-                        <InfoPill label="Pending" variant="warning" />
-                      </View>
-
-                      <View style={styles.specsRow}>
-                        <View style={styles.specItem}>
-                          <Ionicons name="speedometer-outline" size={13} color={Colors.textMuted} />
-                          <Text style={styles.specText}>{charger.maxPowerKw} kW</Text>
-                        </View>
-                        <View style={styles.specItem}>
-                          <Ionicons name="hardware-chip-outline" size={13} color={Colors.textMuted} />
-                          <Text style={styles.specText}>{connectorTypes}</Text>
-                        </View>
-                        <View style={styles.specItem}>
-                          <Ionicons name="pricetag-outline" size={13} color={Colors.textMuted} />
-                          <Text style={styles.specText}>${charger.pricingPerKwh.toFixed(2)}/kWh</Text>
-                        </View>
-                      </View>
-
-                      <View style={styles.hostRow}>
-                        <Avatar name={hostNames[charger.hostUserId] || charger.hostUserId.slice(0, 8)} size="sm" />
-                        <Text style={styles.hostId}>Host: {hostNames[charger.hostUserId] || charger.hostUserId.slice(0, 12)}</Text>
-                      </View>
-
-                      <View style={styles.actionRow}>
-                        <PressableScale
-                          onPress={() => {
-                            setRejectTarget(charger);
-                            setRejectReason("");
-                          }}
-                          style={styles.rejectBtn}
-                          disabled={isBusy}
-                        >
-                          <Ionicons name="close" size={16} color={Colors.error} />
-                          <Text style={styles.rejectBtnText}>Reject</Text>
-                        </PressableScale>
-                        <PressableScale
-                          onPress={() => handleDecision(charger, "approved")}
-                          style={styles.approveBtn}
-                          disabled={isBusy}
-                        >
-                          <Ionicons name="checkmark" size={16} color="#FFF" />
-                          <Text style={styles.approveBtnText}>
-                            {isBusy ? "..." : "Approve"}
-                          </Text>
-                        </PressableScale>
-                      </View>
-                    </View>
-                  </PressableScale>
-                </AnimatedListItem>
-              );
-            }}
-            ListEmptyComponent={
-              isLoading ? null : (
-                <View style={styles.emptyWrap}>
-                  <Ionicons name="shield-checkmark" size={48} color={Colors.textMuted} />
-                  <Text style={styles.emptyTitle}>All caught up</Text>
-                  <Text style={styles.emptyMessage}>No pending chargers to review right now.</Text>
-                </View>
-              )
-            }
+            keyExtractor={(item) => item.charger.id}
+            scrollEnabled={false}
+            renderItem={({ item, index }) => (
+              <Animated.View entering={FadeInDown.delay(index * 80).duration(260)}>
+                <ChargerVerifyCard
+                  item={item}
+                  onApprove={handleApprove}
+                  onReject={handleReject}
+                  isApproving={isApproving}
+                  isRejecting={isRejecting}
+                />
+              </Animated.View>
+            )}
           />
-        </ScreenContainer>
-      </Animated.View>
-
-      <BottomSheet
-        visible={Boolean(selected)}
-        onClose={() => setSelected(null)}
-        title="Charger Detail"
-      >
-        {selected ? (
-          <View>
-            <Text style={styles.sheetTitle}>{selected.name}</Text>
-            <Text style={styles.sheetMeta}>Location: {selected.suburb}, {selected.state}</Text>
-            <Text style={styles.sheetMeta}>Host: {hostNames[selected.hostUserId] || selected.hostUserId.slice(0, 12)}</Text>
-            <Text style={styles.sheetMeta}>Power: {selected.maxPowerKw} kW</Text>
-            <Text style={styles.sheetMeta}>Price: ${selected.pricingPerKwh.toFixed(2)}/kWh</Text>
-            <Text style={styles.sheetMeta}>
-              Submitted: {new Date(selected.createdAtIso).toLocaleString()}
-            </Text>
-          </View>
-        ) : null}
-      </BottomSheet>
-
-      <BottomSheet
-        visible={Boolean(rejectTarget)}
-        onClose={() => setRejectTarget(null)}
-        title="Reject Charger"
-        subtitle="Provide a reason visible to the host"
-      >
-        <InputField
-          label="Rejection Reason"
-          value={rejectReason}
-          onChangeText={setRejectReason}
-          multiline
-          numberOfLines={3}
-        />
-        <PrimaryCTA
-          label="Confirm Rejection"
-          onPress={async () => {
-            if (!rejectTarget) return;
-            await handleDecision(
-              rejectTarget,
-              "rejected",
-              rejectReason.trim() || "Rejected by admin"
-            );
-            setRejectTarget(null);
-            setRejectReason("");
-          }}
-          disabled={busyId === rejectTarget?.id}
-          variant="danger"
-          style={{ marginTop: Spacing.md }}
-        />
-      </BottomSheet>
+        )}
+      </ScreenContainer>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: Colors.background },
-  header: { flexDirection: "row", alignItems: "center", marginBottom: Spacing.lg },
-  pageTitle: { fontSize: 28, fontWeight: "800", color: Colors.textPrimary, letterSpacing: -0.5 },
-  pageSubtitle: { ...Typography.caption, marginTop: 2 },
-  queueBadge: { backgroundColor: Colors.warning, width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center" },
-  queueBadgeText: { fontSize: 14, fontWeight: "700", color: "#FFF" },
-  errorBanner: { flexDirection: "row", alignItems: "center", gap: Spacing.sm, backgroundColor: Colors.errorLight, borderRadius: Radius.md, padding: Spacing.md, marginBottom: Spacing.md },
-  errorText: { ...Typography.caption, color: Colors.error, flex: 1 },
-  listContent: { paddingBottom: Spacing.xxxl + 20 },
-  card: { backgroundColor: Colors.surface, borderRadius: Radius.xl, marginBottom: Spacing.md, overflow: "hidden", ...Shadows.card },
-  cardAccent: { height: 3, backgroundColor: Colors.warning },
-  cardBody: { padding: Spacing.lg },
-  cardTop: { flexDirection: "row", alignItems: "center", gap: Spacing.md },
-  chargerIconCircle: { width: 40, height: 40, borderRadius: 20, backgroundColor: Colors.warningLight, alignItems: "center", justifyContent: "center" },
-  chargerName: { fontSize: 16, fontWeight: "700", color: Colors.textPrimary },
-  chargerLocation: { ...Typography.caption, marginTop: 1 },
-  specsRow: { flexDirection: "row", gap: Spacing.lg, marginTop: Spacing.md, paddingTop: Spacing.md, borderTopWidth: 1, borderTopColor: Colors.border },
-  specItem: { flexDirection: "row", alignItems: "center", gap: 4 },
-  specText: { fontSize: 12, fontWeight: "500", color: Colors.textSecondary },
-  hostRow: { flexDirection: "row", alignItems: "center", gap: Spacing.sm, marginTop: Spacing.md },
-  hostId: { ...Typography.caption, color: Colors.textSecondary },
-  actionRow: { flexDirection: "row", gap: Spacing.sm, marginTop: Spacing.lg },
-  rejectBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 10, borderRadius: Radius.pill, backgroundColor: Colors.errorLight },
-  rejectBtnText: { fontSize: 14, fontWeight: "600", color: Colors.error },
-  approveBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 10, borderRadius: Radius.pill, backgroundColor: Colors.primary, ...Shadows.button },
-  approveBtnText: { fontSize: 14, fontWeight: "600", color: "#FFF" },
-  emptyWrap: { alignItems: "center", paddingVertical: Spacing.xxxl },
-  emptyTitle: { ...Typography.sectionTitle, marginTop: Spacing.md },
-  emptyMessage: { ...Typography.body, textAlign: "center", marginTop: Spacing.xs },
-  sheetTitle: { ...Typography.sectionTitle },
-  sheetMeta: { ...Typography.body, marginTop: Spacing.xs },
+  safe: {
+    flex: 1,
+    backgroundColor: Colors.background,
+  },
+  card: {
+    marginBottom: Spacing.lg,
+  },
+  cardHeader: {
+    marginBottom: Spacing.md,
+  },
+  hostRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.md,
+  },
+  hostAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.accent,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  hostAvatarText: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: Colors.textInverse,
+  },
+  specRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: Spacing.xs,
+    marginTop: Spacing.md,
+  },
+  rubricSlider: {
+    marginBottom: Spacing.sm,
+  },
+  rubricLabelRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: Spacing.xs,
+  },
+  rubricValue: {
+    ...Typography.cardTitle,
+    color: Colors.accent,
+  },
+  scoreRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: Colors.surfaceAlt,
+    borderRadius: Radius.md,
+    padding: Spacing.md,
+    marginVertical: Spacing.md,
+    borderWidth: 2,
+  },
+  scoreText: {
+    fontSize: 20,
+    fontWeight: "700",
+  },
+  actionRow: {
+    flexDirection: "row",
+    gap: Spacing.md,
+    marginTop: Spacing.md,
+  },
+  actionHalf: {
+    flex: 1,
+  },
 });

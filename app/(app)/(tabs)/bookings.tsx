@@ -17,6 +17,7 @@ import {
   BookingCard,
   BookingTimeline,
   BottomSheet,
+  CancellationSheet,
   ChargerCardSkeleton,
   EmptyStateCard,
   InfoPill,
@@ -64,6 +65,8 @@ export default function DriverBookingsScreen() {
 
   const [segment, setSegment] = useState<"upcoming" | "active" | "past">("upcoming");
   const [reviewBooking, setReviewBooking] = useState<Booking | null>(null);
+  const [cancelBooking, setCancelBooking] = useState<Booking | null>(null);
+  const [isCancelling, setIsCancelling] = useState(false);
   const [rating, setRating] = useState(5);
   const [comment, setComment] = useState("");
   const [reviewedIds, setReviewedIds] = useState<Record<string, number>>({});
@@ -97,6 +100,20 @@ export default function DriverBookingsScreen() {
   const showToast = (message: string) => {
     setToastText(message);
     setToastVisible(true);
+  };
+
+  const handleCancelConfirm = async (reason: string) => {
+    if (!cancelBooking) return;
+    setIsCancelling(true);
+    try {
+      await actions.cancelBooking(cancelBooking.id, reason);
+      showToast("Booking cancelled.");
+    } catch {
+      showToast("Failed to cancel booking.");
+    } finally {
+      setIsCancelling(false);
+      setCancelBooking(null);
+    }
   };
 
   const handleReviewSubmit = async () => {
@@ -155,7 +172,7 @@ export default function DriverBookingsScreen() {
             <FlatList
               data={list}
               keyExtractor={(item) => item.id}
-              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#00BFA5" />}
               contentContainerStyle={styles.listContent}
               showsVerticalScrollIndicator={false}
               renderItem={({ item, index }) => {
@@ -173,11 +190,17 @@ export default function DriverBookingsScreen() {
                   )
                 );
 
+                // Only show arrival/charging actions when host has approved
+                const isApproved = item.status === "approved";
+                const isInProgress = item.status === "in_progress";
+                const canMarkArrived = isApproved && item.arrivalSignal === "en_route";
+                const canStartCharging = isApproved && item.arrivalSignal === "arrived";
+
                 const primaryAction =
                   segment === "upcoming"
                     ? item.status === "requested" ? "Edit Booking" : undefined
                     : segment === "active"
-                    ? "Start Charging"
+                    ? canStartCharging ? "Start Charging" : undefined
                     : reviewedRating
                     ? undefined
                     : "Leave Review";
@@ -185,7 +208,7 @@ export default function DriverBookingsScreen() {
                 const secondaryAction =
                   segment === "upcoming"
                     ? "Cancel"
-                    : segment === "active"
+                    : segment === "active" && canMarkArrived
                     ? "Mark Arrived"
                     : undefined;
 
@@ -214,8 +237,10 @@ export default function DriverBookingsScreen() {
                         secondaryActionLabel={secondaryAction}
                         onSecondaryAction={
                           segment === "upcoming"
-                            ? () => actions.cancelBooking(item.id)
-                            : () => actions.markArrived(item.id)
+                            ? () => setCancelBooking(item)
+                            : canMarkArrived
+                            ? () => actions.markArrived(item.id)
+                            : undefined
                         }
                         primaryActionLabel={primaryAction}
                         onPrimaryAction={
@@ -299,6 +324,12 @@ export default function DriverBookingsScreen() {
                         </View>
                       )}
 
+                      {segment === "active" && !isApproved && !isInProgress && (
+                        <View style={styles.pendingNote}>
+                          <Ionicons name="time-outline" size={13} color={Colors.warning} />
+                          <Text style={styles.pendingNoteText}>Waiting for host to approve your booking</Text>
+                        </View>
+                      )}
                       <BookingTimeline status={item.status} currentStep={item.arrivalSignal} />
                       {isPast && reviewedRating ? (
                         <View style={styles.reviewedRow}>
@@ -320,6 +351,22 @@ export default function DriverBookingsScreen() {
           )}
         </ScreenContainer>
       </Animated.View>
+
+      <CancellationSheet
+        visible={Boolean(cancelBooking)}
+        onClose={() => setCancelBooking(null)}
+        onConfirm={handleCancelConfirm}
+        loading={isCancelling}
+        bookingInfo={
+          cancelBooking
+            ? {
+                chargerName:
+                  data.chargersById[cancelBooking.chargerId]?.name || "Charger",
+                scheduledAt: cancelBooking.startTimeIso,
+              }
+            : undefined
+        }
+      />
 
       <BottomSheet
         visible={Boolean(reviewBooking)}
@@ -471,6 +518,22 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "700",
     color: Colors.primary,
+  },
+  pendingNote: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.xs,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+    backgroundColor: Colors.surfaceAlt,
+    borderRadius: Radius.md,
+    marginHorizontal: Spacing.sm,
+    marginTop: Spacing.sm,
+  },
+  pendingNoteText: {
+    fontSize: 12,
+    color: Colors.warning,
+    fontWeight: "500",
   },
   ratingLabel: {
     fontSize: 14,

@@ -6,6 +6,7 @@ import { listVehiclesByUser } from "../features/vehicles/vehicle.repository";
 import { searchAddress, type GeoResult } from "../services/geocodingService";
 import { getRoute } from "../services/routingService";
 import { useDebounce } from "./useDebounce";
+import { recommendCharger } from "../utils/chargerRecommender";
 
 interface TripPlannerSummary {
   distanceKm: number;
@@ -87,9 +88,14 @@ export function useTripPlanner(userId?: string, preferredReservePercent = 12) {
       let recommendedCharger = null;
       if (needsCharge) {
         const chargers = chargersQuery.data ?? [];
-        if (chargers.length > 0) {
-          const first = chargers[0];
-          recommendedCharger = { id: first.id, name: first.name, address: first.address };
+        // Decode polyline to route points for scoring (sample origin/destination as fallback)
+        const routePoints = [
+          { latitude: origin.latitude, longitude: origin.longitude },
+          { latitude: destination.latitude, longitude: destination.longitude },
+        ];
+        const best = recommendCharger(chargers, routePoints);
+        if (best) {
+          recommendedCharger = { id: best.id, name: best.name, address: best.address };
         }
       }
 

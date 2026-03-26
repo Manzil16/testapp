@@ -2,38 +2,52 @@ import { Stack } from "expo-router";
 
 export default function AppLayout() {
   return (
-    <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="(tabs)" />
+    <Stack screenOptions={{ headerShown: true }}>
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen
         name="chargers/[chargerId]"
         options={{
-          animation: "slide_from_bottom",
-          presentation: "modal",
+          headerShown: true,
+          headerTitle: "",
+          headerTransparent: true,
+          headerBackTitle: "Back",
         }}
+      />
+      <Stack.Screen
+        name="checkout"
+        options={{ title: "Confirm booking" }}
+      />
+      <Stack.Screen
+        name="bookings/[bookingId]"
+        options={{ title: "Booking details" }}
+      />
+      <Stack.Screen
+        name="host/booking/[bookingId]"
+        options={{ title: "Booking request" }}
       />
       <Stack.Screen
         name="host/charger-form"
-        options={{
-          animation: "slide_from_right",
-        }}
+        options={{ title: "Add charger" }}
       />
       <Stack.Screen
-        name="driver/vehicle"
-        options={{
-          animation: "slide_from_right",
-        }}
-      />
-      <Stack.Screen
-        name="notifications"
-        options={{
-          animation: "slide_from_right",
-        }}
+        name="payment-success"
+        options={{ title: "", headerBackVisible: false }}
       />
       <Stack.Screen
         name="session-history"
-        options={{
-          animation: "slide_from_right",
-        }}
+        options={{ title: "Session history" }}
+      />
+      <Stack.Screen
+        name="notifications"
+        options={{ title: "Notifications" }}
+      />
+      <Stack.Screen
+        name="verification-required"
+        options={{ title: "Complete verification" }}
+      />
+      <Stack.Screen
+        name="driver/vehicle"
+        options={{ title: "Vehicle profile" }}
       />
     </Stack>
   );

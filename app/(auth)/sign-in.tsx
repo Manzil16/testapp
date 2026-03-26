@@ -14,6 +14,8 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import { InputField, GradientButton } from "@/src/components";
 import { Colors, Radius, Shadows, Spacing, Typography } from "@/src/features/shared/theme";
@@ -27,9 +29,9 @@ import {
 WebBrowser.maybeCompleteAuthSession();
 
 const ROLE_INFO = [
-  { label: "Driver", icon: "🚗", desc: "Find & book chargers" },
-  { label: "Host", icon: "🏠", desc: "List your charger" },
-  { label: "Admin", icon: "🛡️", desc: "Manage the platform" },
+  { label: "Driver", ionicon: "car-sport" as const, desc: "Find & book chargers" },
+  { label: "Host", ionicon: "home" as const, desc: "List your charger" },
+  { label: "Admin", ionicon: "shield-checkmark" as const, desc: "Manage the platform" },
 ] as const;
 
 export default function SignInScreen() {
@@ -119,9 +121,14 @@ export default function SignInScreen() {
           keyboardShouldPersistTaps="handled"
         >
           <Animated.View entering={FadeIn.duration(400)} style={styles.brandBlock}>
-            <View style={styles.logoCircle}>
-              <Text style={styles.logoEmoji}>⚡</Text>
-            </View>
+            <LinearGradient
+              colors={[Colors.accent, Colors.accentDark]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.logoSquare}
+            >
+              <Ionicons name="flash" size={32} color="#FFFFFF" />
+            </LinearGradient>
             <Text style={styles.brandName}>VehicleGrid</Text>
             <Text style={styles.brandTagline}>The EV charging marketplace</Text>
           </Animated.View>
@@ -129,7 +136,9 @@ export default function SignInScreen() {
           <Animated.View entering={FadeInDown.delay(100).duration(350)} style={styles.roleTileRow}>
             {ROLE_INFO.map((role) => (
               <View key={role.label} style={styles.roleTile}>
-                <Text style={styles.roleTileIcon}>{role.icon}</Text>
+                <View style={styles.roleTileIconCircle}>
+                  <Ionicons name={role.ionicon} size={18} color={Colors.primaryDark} />
+                </View>
                 <Text style={styles.roleTileLabel}>{role.label}</Text>
                 <Text style={styles.roleTileDesc}>{role.desc}</Text>
               </View>
@@ -181,7 +190,7 @@ export default function SignInScreen() {
               autoCorrect={false}
               placeholder="you@example.com"
               error={emailError}
-              leftIcon={<Text style={styles.inputIcon}>✉</Text>}
+              leftIcon={<Ionicons name="mail-outline" size={16} color={Colors.textMuted} />}
             />
 
             <InputField
@@ -195,9 +204,9 @@ export default function SignInScreen() {
               autoCapitalize="none"
               placeholder="••••••••"
               error={passwordError}
-              leftIcon={<Text style={styles.inputIcon}>🔒</Text>}
+              leftIcon={<Ionicons name="lock-closed-outline" size={16} color={Colors.textMuted} />}
               rightIcon={
-                <Text style={styles.inputIcon}>{showPassword ? "🙈" : "👁"}</Text>
+                <Ionicons name={showPassword ? "eye-off-outline" : "eye-outline"} size={16} color={Colors.textMuted} />
               }
               onRightIconPress={() => setShowPassword((v) => !v)}
             />
@@ -217,10 +226,7 @@ export default function SignInScreen() {
             </Text>
           </Animated.View>
 
-          <Text style={styles.roleHint}>
-            Your role (Driver / Host / Admin) is selected when you create your account
-            and can be updated anytime in Settings.
-          </Text>
+          {/* Role hint removed — role tiles communicate this */}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -241,18 +247,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: Spacing.xxl,
   },
-  logoCircle: {
+  logoSquare: {
     width: 68,
     height: 68,
     borderRadius: Radius.xl,
-    backgroundColor: Colors.accentLight,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: Spacing.md,
-    ...Shadows.glow,
-  },
-  logoEmoji: {
-    fontSize: 34,
+    ...Shadows.button,
   },
   brandName: {
     fontSize: 30,
@@ -279,8 +281,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  roleTileIcon: {
-    fontSize: 22,
+  roleTileIconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.primaryLight,
+    alignItems: "center",
+    justifyContent: "center",
     marginBottom: 5,
   },
   roleTileLabel: {
@@ -302,7 +309,8 @@ const styles = StyleSheet.create({
     borderRadius: Radius.card,
     padding: Spacing.xl,
     borderWidth: 1,
-    borderColor: Colors.glassBorder,
+    borderColor: Colors.borderLight,
+    ...Shadows.card,
   },
   cardTitle: {
     ...Typography.sectionTitle,
@@ -354,17 +362,13 @@ const styles = StyleSheet.create({
   dividerLine: {
     flex: 1,
     height: 1,
-    backgroundColor: Colors.border,
+    backgroundColor: Colors.borderLight,
   },
   dividerLabel: {
-    fontSize: 12,
+    fontSize: 11,
     color: Colors.textMuted,
     fontWeight: "500",
     fontFamily: "DMSans_500Medium",
-  },
-  inputIcon: {
-    fontSize: 14,
-    color: Colors.textMuted,
   },
   ctaBtn: {
     marginTop: Spacing.sm,
@@ -380,13 +384,5 @@ const styles = StyleSheet.create({
     color: Colors.accent,
     fontWeight: "700",
   },
-  roleHint: {
-    textAlign: "center",
-    fontSize: 11,
-    color: Colors.textMuted,
-    marginTop: Spacing.xl,
-    lineHeight: 16,
-    paddingHorizontal: Spacing.sm,
-    fontFamily: "DMSans_400Regular",
-  },
+  // roleHint removed
 });

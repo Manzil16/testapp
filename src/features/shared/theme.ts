@@ -4,42 +4,44 @@
 // ─── Light Theme Colors ─────────────────────────────────────────
 export const Colors = {
   // Core backgrounds
-  background: "#F5F5F5",
+  background: "#F8F9FB",
   surface: "#FFFFFF",
-  surfaceAlt: "#F0F1F4",
+  surfaceAlt: "#F1F5F9",
   surfaceElevated: "#FFFFFF",
 
   // Brand / Accent (teal)
   accent: "#00BFA5",
-  accentDark: "#009E88",
-  accentLight: "rgba(0, 191, 165, 0.10)",
+  accentDark: "#00897B",
+  accentLight: "#E0F2F1",
   accentGlow: "rgba(0, 191, 165, 0.18)",
+  accentMuted: "#B2DFDB",
 
   // Legacy alias
   primary: "#00BFA5",
-  primaryDark: "#009E88",
-  primaryLight: "rgba(0, 191, 165, 0.10)",
+  primaryDark: "#00897B",
+  primaryLight: "#E0F2F1",
 
   // Text
-  textPrimary: "#111111",
-  textSecondary: "#666666",
-  textMuted: "#8E8EA0",
+  textPrimary: "#0F172A",
+  textSecondary: "#475569",
+  textMuted: "#94A3B8",
   textInverse: "#FFFFFF",
 
   // Borders
-  border: "#E0E0E0",
+  border: "#E2E8F0",
+  borderLight: "#F1F5F9",
   borderFocus: "#00BFA5",
   borderSubtle: "rgba(0, 0, 0, 0.04)",
 
   // Semantic
   success: "#10B981",
-  successLight: "rgba(16, 185, 129, 0.10)",
+  successLight: "#D1FAE5",
   warning: "#F59E0B",
-  warningLight: "rgba(245, 158, 11, 0.10)",
+  warningLight: "#FEF3C7",
   error: "#EF4444",
-  errorLight: "rgba(239, 68, 68, 0.10)",
+  errorLight: "#FEE2E2",
   info: "#3B82F6",
-  infoLight: "rgba(59, 130, 246, 0.10)",
+  infoLight: "#DBEAFE",
 
   // Map
   mapAvailable: "#10B981",
@@ -47,11 +49,11 @@ export const Colors = {
   mapOffline: "#EF4444",
 
   // Badges
-  topRatedLight: "rgba(245, 158, 11, 0.10)",
+  topRatedLight: "#FEF3C7",
 
   // Shadow & Overlay
-  shadow: "rgba(0, 0, 0, 0.08)",
-  shadowStrong: "rgba(0, 0, 0, 0.15)",
+  shadow: "rgba(15, 23, 42, 0.08)",
+  shadowStrong: "rgba(15, 23, 42, 0.15)",
   overlay: "rgba(0, 0, 0, 0.4)",
 
   // Glassmorphism
@@ -59,15 +61,16 @@ export const Colors = {
   glassBorder: "rgba(0, 0, 0, 0.06)",
 
   // Gradients (as arrays for LinearGradient)
-  gradientAccent: ["#00BFA5", "#00A3D8"] as const,
-  gradientDark: ["#F0F1F4", "#F5F5F5"] as const,
+  gradientAccent: ["#00BFA5", "#00897B"] as const,
+  gradientDark: ["#F1F5F9", "#F8F9FB"] as const,
   gradientCard: ["rgba(0,0,0,0.02)", "rgba(0,0,0,0.01)"] as const,
-  gradientHero: ["#00BFA5", "#00A3D8", "#0077B6"] as const,
+  gradientHero: ["#00BFA5", "#00897B"] as const,
+  gradientDanger: ["#EF4444", "#DC2626"] as const,
 
   // Legacy backward compat
   card: "#FFFFFF",
-  text: "#111111",
-  muted: "#666666",
+  text: "#0F172A",
+  muted: "#475569",
   danger: "#EF4444",
 } as const;
 
@@ -87,14 +90,15 @@ export const Typography = {
     fontSize: 28,
     fontWeight: "700" as const,
     color: Colors.textPrimary,
-    letterSpacing: -0.5,
+    letterSpacing: -0.8,
     fontFamily: "Syne_700Bold",
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: "600" as const,
+    fontSize: 19,
+    fontWeight: "700" as const,
     color: Colors.textPrimary,
-    fontFamily: "Syne_600SemiBold",
+    letterSpacing: -0.3,
+    fontFamily: "Syne_700Bold",
   },
   cardTitle: {
     fontSize: 15,
@@ -106,6 +110,7 @@ export const Typography = {
     fontSize: 14,
     fontWeight: "400" as const,
     color: Colors.textSecondary,
+    lineHeight: 21,
     fontFamily: "DMSans_400Regular",
   },
   caption: {
@@ -115,15 +120,16 @@ export const Typography = {
     fontFamily: "DMSans_400Regular",
   },
   priceHighlight: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: "700" as const,
     color: Colors.accent,
     fontFamily: "Syne_700Bold",
   },
   badge: {
-    fontSize: 11,
-    fontWeight: "600" as const,
-    fontFamily: "DMSans_600SemiBold",
+    fontSize: 10,
+    fontWeight: "700" as const,
+    letterSpacing: 0.5,
+    fontFamily: "DMSans_700Bold",
   },
   label: {
     fontSize: 13,
@@ -151,19 +157,19 @@ export const Spacing = {
   xxxxl: 40,
 
   // Semantic aliases
-  screenPadding: 16,
-  cardPadding: 16,
-  sectionGap: 24,
+  screenPadding: 20,
+  cardPadding: 18,
+  sectionGap: 28,
   elementGap: 12,
   microGap: 8,
 } as const;
 
 export const Radius = {
-  sm: 6,
-  md: 8,
-  lg: 12,
-  xl: 16,
-  xxl: 20,
+  sm: 8,
+  md: 10,
+  lg: 14,
+  xl: 18,
+  xxl: 24,
   full: 999,
 
   // Semantic aliases
@@ -174,25 +180,39 @@ export const Radius = {
 
 export const Shadows = {
   card: {
-    shadowColor: "#000",
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  cardHover: {
+    shadowColor: "#0F172A",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.08,
-    shadowRadius: 12,
+    shadowRadius: 16,
     elevation: 4,
   },
   modal: {
-    shadowColor: "#000",
+    shadowColor: "#0F172A",
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.15,
+    shadowOpacity: 0.12,
     shadowRadius: 24,
-    elevation: 12,
+    elevation: 8,
   },
   button: {
     shadowColor: "#00BFA5",
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
+    shadowOpacity: 0.20,
     shadowRadius: 12,
-    elevation: 6,
+    elevation: 4,
+  },
+  sticky: {
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 4,
   },
   glow: {
     shadowColor: "#00BFA5",
@@ -202,16 +222,16 @@ export const Shadows = {
     elevation: 8,
   },
   subtle: {
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    elevation: 2,
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.03,
+    shadowRadius: 4,
+    elevation: 1,
   },
 } as const;
 
 export const Animation = {
-  staggerDelay: 80,
+  staggerDelay: 60,
   entranceDuration: 400,
   fadeIn: { duration: 300 },
   spring: { damping: 20, stiffness: 300 },

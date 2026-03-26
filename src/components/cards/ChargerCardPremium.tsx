@@ -7,8 +7,10 @@ import {
   View,
   ViewStyle,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import { Colors, Radius, Shadows, Spacing } from "@/src/features/shared/theme";
-import { ensurePublicUrl } from "@/src/services/imageService";
+import { getThumbnailUrl } from "@/src/services/imageService";
 import { InfoPill } from "../ui/InfoPill";
 import { RatingStarsRow } from "../ui/RatingStarsRow";
 import { TrustBadge, TrustBadgeType } from "../ui/TrustBadge";
@@ -63,7 +65,7 @@ export function ChargerCardPremium({
   const [imageError, setImageError] = useState(false);
   const normalizedImage = useMemo(() => {
     if (!imageSource || imageError) return null;
-    if (typeof imageSource === "string") return ensurePublicUrl(imageSource);
+    if (typeof imageSource === "string") return getThumbnailUrl(imageSource);
     return imageSource;
   }, [imageSource, imageError]);
   const resolvedImage = normalizedImage;
@@ -85,7 +87,7 @@ export function ChargerCardPremium({
             />
           ) : (
             <View style={[styles.compactAvatar, { backgroundColor: available ? Colors.primaryLight : Colors.surfaceAlt }]}>
-              <Text style={styles.compactAvatarIcon}>⚡</Text>
+              <Ionicons name="flash" size={22} color={available ? Colors.primaryDark : Colors.textMuted} />
             </View>
           )}
         </View>
@@ -122,9 +124,14 @@ export function ChargerCardPremium({
             onError={() => setImageError(true)}
           />
         ) : (
-          <View style={styles.imagePlaceholder}>
-            <Text style={styles.imagePlaceholderIcon}>⚡</Text>
-          </View>
+          <LinearGradient
+            colors={[Colors.primaryLight, Colors.accentMuted]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.imagePlaceholder}
+          >
+            <Ionicons name="flash" size={32} color={Colors.primaryDark} />
+          </LinearGradient>
         )}
 
         {/* Availability badge overlay */}
@@ -189,6 +196,8 @@ const styles = StyleSheet.create({
     borderRadius: Radius.card,
     overflow: "hidden",
     marginBottom: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
     ...Shadows.card,
   },
   imageContainer: {
@@ -205,24 +214,22 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  imagePlaceholderIcon: {
-    fontSize: 48,
-  },
+  // placeholder icon handled by Ionicons inside LinearGradient
   availabilityDot: {
     position: "absolute",
     top: 10,
     left: 10,
-    width: 10,
-    height: 10,
+    width: 12,
+    height: 12,
     borderRadius: Radius.pill,
-    borderWidth: 2,
+    borderWidth: 3,
     borderColor: Colors.surface,
   },
   distanceChip: {
     position: "absolute",
     top: 10,
     right: 10,
-    backgroundColor: "rgba(0,0,0,0.55)",
+    backgroundColor: "rgba(15,23,42,0.7)",
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: Radius.pill,
@@ -254,11 +261,13 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "700",
     color: Colors.primary,
+    fontFamily: "Syne_700Bold",
   },
   priceUnit: {
     fontSize: 11,
     fontWeight: "400",
     color: Colors.textMuted,
+    fontFamily: "DMSans_400Regular",
   },
   address: {
     fontSize: 12,
@@ -286,6 +295,8 @@ const styles = StyleSheet.create({
     borderRadius: Radius.card,
     padding: Spacing.cardPadding,
     marginBottom: Spacing.sm,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.primary,
     ...Shadows.card,
   },
   compactLeft: {
@@ -303,9 +314,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  compactAvatarIcon: {
-    fontSize: 22,
-  },
+  // compact avatar icon handled by Ionicons
   compactBody: {
     flex: 1,
   },

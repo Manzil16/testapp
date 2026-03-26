@@ -5,6 +5,9 @@ export interface UserProfile {
   email: string;
   displayName: string;
   role: AppRole;
+  isDriver: boolean;
+  isHost: boolean;
+  isAdmin: boolean;
   phone?: string;
   avatarUrl?: string;
   preferredReservePercent?: number;
@@ -17,6 +20,8 @@ export interface UpsertUserProfileInput {
   email: string;
   displayName: string;
   role: AppRole;
+  isDriver?: boolean;
+  isHost?: boolean;
   phone?: string;
   preferredReservePercent?: number;
 }

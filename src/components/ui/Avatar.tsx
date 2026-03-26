@@ -14,7 +14,7 @@ const SIZE_MAP: Record<AvatarSize, number> = {
 };
 
 const AVATAR_PALETTE = [
-  "#1DB954", "#3B82F6", "#F59E0B", "#EF4444", "#8B5CF6",
+  "#00BFA5", "#3B82F6", "#F59E0B", "#EF4444", "#8B5CF6",
   "#EC4899", "#14B8A6", "#F97316", "#6366F1", "#06B6D4",
 ] as const;
 

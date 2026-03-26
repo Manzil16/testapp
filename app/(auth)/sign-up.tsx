@@ -14,9 +14,10 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import { InputField, GradientButton } from "@/src/components";
-import { Colors, Radius, Spacing, Typography } from "@/src/features/shared/theme";
+import { Colors, Radius, Shadows, Spacing, Typography } from "@/src/features/shared/theme";
 import { useAuth } from "@/src/features/auth/auth-context";
 import type { AppRole } from "@/src/features/users/user.types";
 import {
@@ -37,11 +38,17 @@ interface RoleOption {
   accentBg: string;
 }
 
+const ROLE_IONICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
+  driver: "car-sport",
+  host: "home",
+  admin: "shield-checkmark",
+};
+
 const ROLES: RoleOption[] = [
   {
     id: "driver",
     label: "Driver",
-    icon: "🚗",
+    icon: "car-sport",
     headline: "Find & book EV chargers",
     bullets: ["Discover nearby chargers", "Book sessions in advance", "Track trips & energy use"],
     accentColor: Colors.accent,
@@ -50,7 +57,7 @@ const ROLES: RoleOption[] = [
   {
     id: "host",
     label: "Host",
-    icon: "🏠",
+    icon: "home",
     headline: "List your charger & earn",
     bullets: ["Share your home charger", "Set your own schedule", "Earn per kWh delivered"],
     accentColor: Colors.info,
@@ -59,7 +66,7 @@ const ROLES: RoleOption[] = [
   {
     id: "admin",
     label: "Admin",
-    icon: "🛡️",
+    icon: "shield-checkmark",
     headline: "Manage the platform",
     bullets: ["Verify charger listings", "Resolve disputes & reports", "Access platform analytics"],
     accentColor: Colors.warning,
@@ -205,7 +212,9 @@ export default function SignUpScreen() {
                       </View>
                     )}
 
-                    <Text style={styles.roleCardIcon}>{r.icon}</Text>
+                    <View style={[styles.roleCardIconCircle, { backgroundColor: isActive ? r.accentColor + "22" : Colors.surfaceAlt }]}>
+                      <Ionicons name={r.icon as any} size={22} color={isActive ? r.accentColor : Colors.textMuted} />
+                    </View>
                     <Text
                       style={[styles.roleCardLabel, isActive && { color: r.accentColor }]}
                     >
@@ -225,9 +234,12 @@ export default function SignUpScreen() {
             </View>
 
             <View style={[styles.roleBanner, { backgroundColor: selectedRole.accentBg, borderColor: selectedRole.accentColor }]}>
-              <Text style={[styles.roleBannerText, { color: selectedRole.accentColor }]}>
-                {selectedRole.icon} Signing up as a <Text style={{ fontWeight: "800" }}>{selectedRole.label}</Text> — {selectedRole.headline.toLowerCase()}
-              </Text>
+              <View style={styles.roleBannerContent}>
+                <Ionicons name={selectedRole.icon as any} size={16} color={selectedRole.accentColor} />
+                <Text style={[styles.roleBannerText, { color: selectedRole.accentColor }]}>
+                  Signing up as a <Text style={{ fontWeight: "800" }}>{selectedRole.label}</Text> — {selectedRole.headline.toLowerCase()}
+                </Text>
+              </View>
             </View>
           </Animated.View>
 
@@ -265,7 +277,7 @@ export default function SignUpScreen() {
               placeholder="Your name"
               autoCapitalize="words"
               error={nameError}
-              leftIcon={<Text style={styles.inputIcon}>👤</Text>}
+              leftIcon={<Ionicons name="person-outline" size={16} color={Colors.textMuted} />}
             />
 
             <InputField
@@ -277,7 +289,7 @@ export default function SignUpScreen() {
               autoCorrect={false}
               placeholder="you@example.com"
               error={emailError}
-              leftIcon={<Text style={styles.inputIcon}>✉</Text>}
+              leftIcon={<Ionicons name="mail-outline" size={16} color={Colors.textMuted} />}
             />
 
             <InputField
@@ -288,9 +300,9 @@ export default function SignUpScreen() {
               autoCapitalize="none"
               placeholder="Minimum 6 characters"
               error={passwordError}
-              leftIcon={<Text style={styles.inputIcon}>🔒</Text>}
+              leftIcon={<Ionicons name="lock-closed-outline" size={16} color={Colors.textMuted} />}
               rightIcon={
-                <Text style={styles.inputIcon}>{showPassword ? "🙈" : "👁"}</Text>
+                <Ionicons name={showPassword ? "eye-off-outline" : "eye-outline"} size={16} color={Colors.textMuted} />
               }
               onRightIconPress={() => setShowPassword((v) => !v)}
               hint={!passwordError ? "Must be at least 6 characters" : undefined}
@@ -304,7 +316,7 @@ export default function SignUpScreen() {
               autoCapitalize="none"
               placeholder="Re-enter password"
               error={confirmError}
-              leftIcon={<Text style={styles.inputIcon}>🔒</Text>}
+              leftIcon={<Ionicons name="lock-closed-outline" size={16} color={Colors.textMuted} />}
             />
 
             <GradientButton
@@ -390,8 +402,12 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "800",
   },
-  roleCardIcon: {
-    fontSize: 26,
+  roleCardIconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
     marginBottom: 6,
   },
   roleCardLabel: {
@@ -429,18 +445,26 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     padding: Spacing.md,
   },
+  roleBannerContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: Spacing.sm,
+  },
   roleBannerText: {
     fontSize: 13,
     textAlign: "center",
     lineHeight: 18,
     fontFamily: "DMSans_500Medium",
+    flex: 1,
   },
   card: {
     backgroundColor: Colors.surface,
     borderRadius: Radius.card,
     padding: Spacing.xl,
     borderWidth: 1,
-    borderColor: Colors.glassBorder,
+    borderColor: Colors.borderLight,
+    ...Shadows.card,
   },
   cardTitle: {
     ...Typography.cardTitle,
@@ -490,16 +514,13 @@ const styles = StyleSheet.create({
   dividerLine: {
     flex: 1,
     height: 1,
-    backgroundColor: Colors.border,
+    backgroundColor: Colors.borderLight,
   },
   dividerLabel: {
-    fontSize: 12,
+    fontSize: 11,
     color: Colors.textMuted,
     fontWeight: "500",
-  },
-  inputIcon: {
-    fontSize: 14,
-    color: Colors.textMuted,
+    fontFamily: "DMSans_500Medium",
   },
   ctaBtn: {
     marginTop: Spacing.sm,

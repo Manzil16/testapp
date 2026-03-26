@@ -11,13 +11,13 @@ export type BookingStatus =
   | "completed"
   | "cancelled";
 
-const statusConfig: Record<BookingStatus, { label: string; variant: InfoPillVariant }> = {
-  requested: { label: "Pending Approval", variant: "warning" },
-  approved: { label: "Confirmed", variant: "success" },
-  declined: { label: "Declined", variant: "error" },
-  in_progress: { label: "Charging", variant: "primary" },
-  completed: { label: "Completed", variant: "default" },
-  cancelled: { label: "Cancelled", variant: "error" },
+const statusConfig: Record<BookingStatus, { label: string; variant: InfoPillVariant; borderColor: string }> = {
+  requested: { label: "Pending Approval", variant: "warning", borderColor: "#F59E0B" },
+  approved: { label: "Confirmed", variant: "success", borderColor: "#00BFA5" },
+  declined: { label: "Declined", variant: "error", borderColor: "#EF4444" },
+  in_progress: { label: "Charging", variant: "primary", borderColor: "#3B82F6" },
+  completed: { label: "Completed", variant: "success", borderColor: "#10B981" },
+  cancelled: { label: "Cancelled", variant: "error", borderColor: "#94A3B8" },
 };
 
 export interface BookingCardData {
@@ -55,7 +55,7 @@ export function BookingCard({
 }: BookingCardProps) {
   const { chargerName, chargerAddress, status, scheduledAt, durationMinutes, kwhDelivered, totalCost } =
     booking;
-  const { label, variant } = statusConfig[status];
+  const { label, variant, borderColor: statusBorderColor } = statusConfig[status];
 
   const formattedDate = new Date(scheduledAt).toLocaleDateString("en-AU", {
     weekday: "short",
@@ -71,7 +71,7 @@ export function BookingCard({
     <TouchableOpacity
       onPress={onPress}
       activeOpacity={onPress ? 0.8 : 1}
-      style={[styles.card, style]}
+      style={[styles.card, { borderLeftColor: statusBorderColor }, style]}
     >
       {/* Header row */}
       <View style={styles.header}>
@@ -147,6 +147,8 @@ const styles = StyleSheet.create({
     borderRadius: Radius.card,
     padding: Spacing.cardPadding,
     marginBottom: Spacing.md,
+    borderLeftWidth: 4,
+    borderLeftColor: Colors.border,
     ...Shadows.card,
   },
   header: {

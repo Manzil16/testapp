@@ -1,5 +1,8 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Notifications from "expo-notifications";
+import Constants from "expo-constants";
 import { supabase, testSupabaseConnectivity } from "../../lib/supabase";
 import {
   signInWithEmail,
@@ -46,6 +49,9 @@ function mapProfile(row: Record<string, unknown>): UserProfile {
     email: row.email as string,
     displayName: row.display_name as string,
     role: row.role as AppRole,
+    isDriver: row.is_driver as boolean ?? true,
+    isHost: row.is_host as boolean ?? false,
+    isAdmin: row.is_admin as boolean ?? false,
     phone: (row.phone as string) || undefined,
     avatarUrl: (row.avatar_url as string) || undefined,
     preferredReservePercent: row.preferred_reserve_percent as number,
@@ -182,6 +188,52 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [user]);
 
+  // Register push token when profile is loaded
+  useEffect(() => {
+    if (!user || !profile) return;
+    if (Platform.OS === "web") return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const { status: existing } = await Notifications.getPermissionsAsync();
+        let finalStatus = existing;
+        if (existing !== "granted") {
+          const { status } = await Notifications.requestPermissionsAsync();
+          finalStatus = status;
+        }
+        if (finalStatus !== "granted") return;
+
+        const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+        const tokenData = await Notifications.getExpoPushTokenAsync(
+          projectId ? { projectId } : undefined
+        );
+        const token = tokenData.data;
+
+        if (cancelled) return;
+
+        // Only update if token changed
+        const { data: current } = await supabase
+          .from("profiles")
+          .select("expo_push_token")
+          .eq("id", user.id)
+          .single();
+
+        if (current?.expo_push_token !== token) {
+          await supabase
+            .from("profiles")
+            .update({ expo_push_token: token })
+            .eq("id", user.id);
+          if (__DEV__) console.log("[auth] push token registered:", token.slice(0, 30) + "...");
+        }
+      } catch (err) {
+        if (__DEV__) console.warn("[auth] push token registration failed:", err);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [user, profile]);
+
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
@@ -237,6 +289,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             email,
             display_name: displayName,
             role,
+            is_driver: role === "driver" || role === "admin",
+            is_host: role === "host" || role === "admin",
+            is_admin: role === "admin",
           })
           .select()
           .single();

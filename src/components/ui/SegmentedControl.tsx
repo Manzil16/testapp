@@ -71,10 +71,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "500",
     color: Colors.textSecondary,
+    fontFamily: "DMSans_500Medium",
   },
   labelActive: {
     fontWeight: "600",
     color: Colors.textPrimary,
+    fontFamily: "DMSans_600SemiBold",
   },
   icon: {
     fontSize: 13,

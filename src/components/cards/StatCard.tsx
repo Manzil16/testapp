@@ -1,17 +1,33 @@
 import React from "react";
 import { StyleSheet, Text, TouchableOpacity, View, ViewStyle } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { Colors, Radius, Shadows, Spacing, Typography } from "@/src/features/shared/theme";
+
+const ICON_MAP: Record<string, keyof typeof Ionicons.glyphMap> = {
+  "🚗": "car-sport",
+  "⚡": "flash",
+  "📅": "calendar",
+  "💰": "cash",
+  "📊": "bar-chart",
+  "👥": "people",
+  "⭐": "star",
+  "🔋": "battery-half",
+  "🏠": "home",
+  "📍": "location",
+  "🕐": "time",
+  "✅": "checkmark-circle",
+  "❌": "close-circle",
+  "⚠️": "alert-circle",
+};
 
 interface StatCardProps {
   icon: string;
   value: string | number;
   label: string;
-  /** Optional small change indicator e.g. "+12% this week" */
   trend?: string;
   trendPositive?: boolean;
   onPress?: () => void;
   style?: ViewStyle;
-  /** Accent color for the icon background */
   accentColor?: string;
 }
 
@@ -26,6 +42,7 @@ export function StatCard({
   accentColor = Colors.primaryLight,
 }: StatCardProps) {
   const Container = onPress ? TouchableOpacity : View;
+  const ioniconsName = ICON_MAP[icon] || "ellipse";
 
   return (
     <Container
@@ -33,18 +50,11 @@ export function StatCard({
       activeOpacity={0.75}
       style={[styles.card, style]}
     >
-      {/* Icon circle */}
       <View style={[styles.iconWrapper, { backgroundColor: accentColor }]}>
-        <Text style={styles.icon}>{icon}</Text>
+        <Ionicons name={ioniconsName} size={20} color={Colors.primaryDark} />
       </View>
-
-      {/* Value */}
       <Text style={styles.value}>{String(value)}</Text>
-
-      {/* Label */}
       <Text style={styles.label} numberOfLines={1}>{label}</Text>
-
-      {/* Trend */}
       {trend ? (
         <Text
           style={[
@@ -65,6 +75,8 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.surface,
     borderRadius: Radius.card,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
     padding: Spacing.cardPadding,
     alignItems: "flex-start",
     ...Shadows.card,
@@ -72,26 +84,28 @@ const styles = StyleSheet.create({
   iconWrapper: {
     width: 40,
     height: 40,
-    borderRadius: Radius.lg,
+    borderRadius: Radius.md,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: Spacing.md,
   },
-  icon: {
-    fontSize: 20,
-  },
   value: {
-    ...Typography.priceHighlight,
+    fontSize: 24,
+    fontWeight: "700",
     color: Colors.textPrimary,
+    fontFamily: "Syne_700Bold",
     marginBottom: 2,
   },
   label: {
-    ...Typography.caption,
-    color: Colors.textSecondary,
+    fontSize: 11,
+    fontWeight: "500",
+    color: Colors.textMuted,
+    fontFamily: "DMSans_500Medium",
   },
   trend: {
     fontSize: 11,
     fontWeight: "600",
     marginTop: 4,
+    fontFamily: "DMSans_600SemiBold",
   },
 });

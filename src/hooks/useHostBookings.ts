@@ -3,9 +3,10 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   listBookingsByHost,
   updateBookingStatus,
+  updateArrivalSignal,
 } from "../features/bookings/booking.repository";
 import { listChargersByHost } from "../features/chargers/charger.repository";
-import { createPaymentIntent } from "../services/stripeService";
+import { capturePayment, cancelPayment } from "../services/stripeService";
 import type { Booking } from "../features/bookings/booking.types";
 import type { Charger } from "../features/chargers/charger.types";
 import type { UserProfile } from "../features/users/user.types";
@@ -80,45 +81,39 @@ export function useHostBookings(hostUserId?: string) {
 
   const approveMutation = useMutation({
     mutationFn: async ({ booking, note }: { booking: Booking; note?: string }) => {
-      // Look up host's Stripe account
-      const { data: hostProfile } = await supabase
-        .from("profiles")
-        .select("stripe_account_id")
-        .eq("id", booking.hostUserId)
-        .single();
-
-      const stripeAccountId = hostProfile?.stripe_account_id;
-
-      if (stripeAccountId) {
-        // Create a Stripe payment intent with platform fee split
-        const amountCents = Math.round(booking.totalAmount * 100);
-        const result = await createPaymentIntent({
-          bookingId: booking.id,
-          amount: amountCents,
-          hostStripeAccountId: stripeAccountId,
-        });
-
-        // Store payment intent ID on the booking
-        await supabase
-          .from("bookings")
-          .update({ stripe_payment_intent_id: result.paymentIntentId })
-          .eq("id", booking.id);
+      // Attempt to capture pre-authorized payment — silently skip if PI not capturable (e.g. Expo Go test mode)
+      if (booking.stripePaymentIntentId) {
+        try {
+          await capturePayment(booking.stripePaymentIntentId);
+        } catch {
+          // PI not in capturable state (no card in Expo Go) — proceed with approval anyway
+        }
       }
-
       await updateBookingStatus(booking.id, "approved", note);
     },
     onSuccess: invalidate,
   });
 
   const declineMutation = useMutation({
-    mutationFn: ({ booking, note }: { booking: Booking; note?: string }) =>
-      updateBookingStatus(booking.id, "declined", note),
+    mutationFn: async ({ booking, note }: { booking: Booking; note?: string }) => {
+      // Attempt to release payment hold — silently skip if PI not cancellable
+      if (booking.stripePaymentIntentId) {
+        try {
+          await cancelPayment(booking.stripePaymentIntentId);
+        } catch {
+          // PI not in cancellable state — proceed with decline anyway
+        }
+      }
+      await updateBookingStatus(booking.id, "declined", note);
+    },
     onSuccess: invalidate,
   });
 
   const completeMutation = useMutation({
-    mutationFn: ({ booking, note }: { booking: Booking; note?: string }) =>
-      updateBookingStatus(booking.id, "completed", note),
+    mutationFn: async ({ booking, note }: { booking: Booking; note?: string }) => {
+      await updateArrivalSignal(booking.id, "departed");
+      await updateBookingStatus(booking.id, "completed", note);
+    },
     onSuccess: invalidate,
   });
 

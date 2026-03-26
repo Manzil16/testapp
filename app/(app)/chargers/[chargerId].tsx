@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import {
   ChargerCardSkeleton,
@@ -24,6 +25,7 @@ import {
   PressableScale,
   RatingStarsRow,
   ScreenContainer,
+  SecondaryButton,
   SectionTitle,
   StickyActionBar,
   TrustBadge,
@@ -36,10 +38,16 @@ import {
 import { useAuth } from "@/src/features/auth/auth-context";
 import { AppConfig } from "@/src/constants/app";
 import { useBadgeCounts, useChargerDetail, useWishlist } from "@/src/hooks";
+import { useChargerStats } from "@/src/hooks/useChargerStats";
+import { useQuery } from "@tanstack/react-query";
+import { listVehiclesByUser } from "@/src/features/vehicles/vehicle.repository";
+import { createPaymentIntent } from "@/src/services/stripeService";
 import { useUserLocation, getDistanceKm, formatDistance } from "@/src/hooks/useUserLocation";
 import { useThemeColors } from "@/src/hooks/useThemeColors";
-import { ensurePublicUrl } from "@/src/services/imageService";
+import { getDetailImageUrl } from "@/src/services/imageService";
 import { getBookingAvailabilityError } from "@/src/hooks/useChargerDetail";
+import { AvailabilityBar } from "@/src/components/ui/AvailabilityBar";
+import { getUserProfile } from "@/src/features/users/user.repository";
 
 export default function ChargerDetailRoute() {
   const router = useRouter();
@@ -53,6 +61,23 @@ export default function ChargerDetailRoute() {
   const userId = useMemo(() => user?.id, [user?.id]);
 
   const { data, isLoading, error, requestBooking, refresh } = useChargerDetail(chargerId, userId);
+  const { data: chargerStats } = useChargerStats(chargerId);
+
+  // Fetch host profile for host section
+  const hostProfileQuery = useQuery({
+    queryKey: ["host-profile", data.charger?.hostUserId],
+    queryFn: () => getUserProfile(data.charger!.hostUserId),
+    enabled: !!data.charger?.hostUserId,
+  });
+  const hostProfile = hostProfileQuery.data;
+
+  // Fetch driver's vehicle for battery capacity validation
+  const vehiclesQuery = useQuery({
+    queryKey: ["vehicles", userId],
+    queryFn: () => listVehiclesByUser(userId!),
+    enabled: Boolean(userId),
+  });
+  const vehicleMaxKwh = vehiclesQuery.data?.[0]?.batteryCapacityKwh ?? 120;
 
   const [startDate, setStartDate] = useState(() => new Date(Date.now() + AppConfig.BOOKING_DEFAULTS.defaultDurationHours * 3600000));
   const [endDate, setEndDate] = useState(() => new Date(Date.now() + 2 * AppConfig.BOOKING_DEFAULTS.defaultDurationHours * 3600000));
@@ -60,6 +85,7 @@ export default function ChargerDetailRoute() {
   const [submitting, setSubmitting] = useState(false);
 
   const charger = data.charger;
+  const activeBooking = data.activeBooking;
   const bookingValidationError = getBookingAvailabilityError(charger, startDate, endDate);
 
   const distanceKm = useMemo(() => {
@@ -92,12 +118,29 @@ export default function ChargerDetailRoute() {
     }
     try {
       setSubmitting(true);
-      await requestBooking({
+      const bookingId = await requestBooking({
         start: startDate,
         end: endDate,
         estimatedKWh,
       });
-      Alert.alert("Booking requested", "Your request was sent to the host.");
+
+      const subtotal = charger.pricingPerKwh * estimatedKWh;
+      const platformFee = subtotal * (AppConfig.PLATFORM_FEE_PERCENT / 100);
+      const totalAmount = subtotal + platformFee;
+
+      // Navigate to checkout for payment
+      router.push({
+        pathname: "/(app)/checkout" as any,
+        params: {
+          bookingId,
+          chargerName: charger.name,
+          totalAmount: String(totalAmount),
+          platformFee: String(platformFee),
+          estimatedKWh: String(estimatedKWh),
+          pricePerKwh: String(charger.pricingPerKwh),
+          hostStripeAccountId: data.hostStripeAccountId ?? "",
+        },
+      });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unable to request booking.";
       Alert.alert("Booking failed", message);
@@ -157,12 +200,17 @@ export default function ChargerDetailRoute() {
         {/* Image Gallery */}
         <Animated.View entering={FadeIn.duration(240)}>
           {charger.images && charger.images.length > 0 ? (
-            <ImageGallery images={charger.images.map((img) => ensurePublicUrl(img))} height={220} />
+            <ImageGallery images={charger.images.map((img) => getDetailImageUrl(img))} height={220} />
           ) : (
-            <View style={styles.heroHeader}>
-              <Text style={styles.heroIcon}>⚡</Text>
+            <LinearGradient
+              colors={[Colors.primaryLight, Colors.accentMuted]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.heroHeader}
+            >
+              <Ionicons name="flash" size={48} color={Colors.primaryDark} />
               <Text style={styles.heroText}>No photos yet</Text>
-            </View>
+            </LinearGradient>
           )}
         </Animated.View>
 
@@ -232,6 +280,40 @@ export default function ChargerDetailRoute() {
           </PremiumCard>
         </Animated.View>
 
+        {/* Stats Row */}
+        {chargerStats && (
+          <Animated.View entering={FadeInDown.delay(60).duration(260)}>
+            <View style={styles.statsRow}>
+              <View style={styles.statItem}>
+                <Text style={styles.statValue}>
+                  {chargerStats.avgRating > 0 ? chargerStats.avgRating.toFixed(1) : "—"}
+                </Text>
+                <Text style={styles.statLabel}>Rating</Text>
+              </View>
+              <View style={styles.statDivider} />
+              <View style={styles.statItem}>
+                <Text style={styles.statValue}>{chargerStats.totalSessions}</Text>
+                <Text style={styles.statLabel}>Sessions</Text>
+              </View>
+              <View style={styles.statDivider} />
+              <View style={styles.statItem}>
+                <Text style={styles.statValue}>
+                  {chargerStats.avgSessionMinutes > 0 ? `${chargerStats.avgSessionMinutes}m` : "—"}
+                </Text>
+                <Text style={styles.statLabel}>Avg duration</Text>
+              </View>
+            </View>
+          </Animated.View>
+        )}
+
+        {/* Availability Bar */}
+        <Animated.View entering={FadeInDown.delay(70).duration(260)}>
+          <PremiumCard style={styles.mainCard}>
+            <SectionTitle title="Today's availability" topSpacing={Spacing.xs} />
+            <AvailabilityBar chargerId={chargerId} />
+          </PremiumCard>
+        </Animated.View>
+
         {/* Amenities */}
         <Animated.View entering={FadeInDown.delay(80).duration(260)}>
           <PremiumCard style={styles.mainCard}>
@@ -260,7 +342,7 @@ export default function ChargerDetailRoute() {
           <PremiumCard style={styles.mainCard}>
             <SectionTitle title="Availability" topSpacing={Spacing.xs} />
             <View style={styles.availabilityBox}>
-              <Text style={styles.availabilityIcon}>🕐</Text>
+              <Ionicons name="time-outline" size={24} color={Colors.primaryDark} style={{ marginTop: 2 }} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.availabilityTitle}>
                   {charger.availabilityWindow
@@ -294,49 +376,111 @@ export default function ChargerDetailRoute() {
           </PremiumCard>
         </Animated.View>
 
-        {/* Booking Form */}
+        {/* Active Booking Banner or Booking Form */}
         <Animated.View entering={FadeInDown.delay(160).duration(260)}>
-          <PremiumCard style={styles.mainCard}>
-            <SectionTitle title="Book This Charger" topSpacing={Spacing.xs} />
+          {activeBooking ? (
+            <PremiumCard style={styles.mainCard}>
+              <SectionTitle title="Your Active Booking" topSpacing={Spacing.xs} />
+              <View style={styles.activeBookingBanner}>
+                <Ionicons
+                  name={activeBooking.status === "in_progress" ? "flash" : activeBooking.status === "approved" ? "checkmark-circle" : "time"}
+                  size={24}
+                  color={activeBooking.status === "in_progress" ? Colors.warning : activeBooking.status === "approved" ? Colors.success : Colors.primary}
+                />
+                <View style={{ flex: 1 }}>
+                  <Text style={Typography.cardTitle}>
+                    {activeBooking.status === "in_progress" ? "Charging In Progress" : activeBooking.status === "approved" ? "Booking Approved" : "Awaiting Host Approval"}
+                  </Text>
+                  <Text style={Typography.caption}>
+                    {new Date(activeBooking.startTimeIso).toLocaleString()} – {new Date(activeBooking.endTimeIso).toLocaleTimeString()}
+                  </Text>
+                  <Text style={[Typography.caption, { color: Colors.textMuted, marginTop: 2 }]}>
+                    {activeBooking.estimatedKWh} kWh · ${activeBooking.totalAmount.toFixed(2)}
+                  </Text>
+                </View>
+                <InfoPill
+                  label={activeBooking.status.replace("_", " ")}
+                  variant={activeBooking.status === "in_progress" ? "warning" : activeBooking.status === "approved" ? "success" : "primary"}
+                />
+              </View>
+            </PremiumCard>
+          ) : (
+            <PremiumCard style={styles.mainCard}>
+              <SectionTitle title="Book This Charger" topSpacing={Spacing.xs} />
 
-            {/* Price breakdown (Airbnb-style) */}
-            <View style={styles.priceBreakdown}>
-              <View style={styles.priceRow}>
-                <Text style={Typography.body}>
-                  ${charger.pricingPerKwh.toFixed(2)} x {estimatedKWh} kWh
-                </Text>
-                <Text style={Typography.body}>
-                  ${(charger.pricingPerKwh * estimatedKWh).toFixed(2)}
-                </Text>
+              {/* Price breakdown (Airbnb-style) */}
+              <View style={styles.priceBreakdown}>
+                <View style={styles.priceRow}>
+                  <Text style={Typography.body}>
+                    ${charger.pricingPerKwh.toFixed(2)} x {estimatedKWh} kWh
+                  </Text>
+                  <Text style={Typography.body}>
+                    ${(charger.pricingPerKwh * estimatedKWh).toFixed(2)}
+                  </Text>
+                </View>
+                <View style={styles.priceRow}>
+                  <Text style={Typography.body}>Platform fee ({AppConfig.PLATFORM_FEE_PERCENT}%)</Text>
+                  <Text style={Typography.body}>
+                    ${(charger.pricingPerKwh * estimatedKWh * AppConfig.PLATFORM_FEE_PERCENT / 100).toFixed(2)}
+                  </Text>
+                </View>
+                <View style={styles.priceDivider} />
+                <View style={styles.priceRow}>
+                  <Text style={styles.totalLabel}>Total</Text>
+                  <Text style={styles.totalValue}>
+                    ${(charger.pricingPerKwh * estimatedKWh * (1 + AppConfig.PLATFORM_FEE_PERCENT / 100)).toFixed(2)}
+                  </Text>
+                </View>
               </View>
-              <View style={styles.priceRow}>
-                <Text style={Typography.body}>Platform fee ({AppConfig.PLATFORM_FEE_PERCENT}%)</Text>
-                <Text style={Typography.body}>
-                  ${(charger.pricingPerKwh * estimatedKWh * AppConfig.PLATFORM_FEE_PERCENT / 100).toFixed(2)}
-                </Text>
-              </View>
-              <View style={styles.priceDivider} />
-              <View style={styles.priceRow}>
-                <Text style={styles.totalLabel}>Total</Text>
-                <Text style={styles.totalValue}>
-                  ${(charger.pricingPerKwh * estimatedKWh * (1 + AppConfig.PLATFORM_FEE_PERCENT / 100)).toFixed(2)}
-                </Text>
-              </View>
-            </View>
 
-            <DateTimeInput label="Start" value={startDate} onChange={setStartDate} mode="datetime" />
-            <DateTimeInput label="End" value={endDate} onChange={setEndDate} mode="datetime" />
-            <InputField
-              label="Estimated Energy (kWh)"
-              value={String(estimatedKWh)}
-              onChangeText={(value) => setEstimatedKWh(Math.max(5, Number(value) || 5))}
-              keyboardType="numeric"
-            />
-            {bookingValidationError ? (
-              <Text style={styles.validationText}>{bookingValidationError}</Text>
-            ) : null}
-          </PremiumCard>
+              <DateTimeInput label="Start" value={startDate} onChange={setStartDate} mode="datetime" />
+              <DateTimeInput label="End" value={endDate} onChange={setEndDate} mode="datetime" />
+              <InputField
+                label={`Estimated Energy (kWh) — max ${vehicleMaxKwh}`}
+                value={String(estimatedKWh)}
+                onChangeText={(value) => setEstimatedKWh(Math.min(Math.max(5, Number(value) || 5), vehicleMaxKwh))}
+                keyboardType="numeric"
+              />
+              {bookingValidationError ? (
+                <Text style={styles.validationText}>{bookingValidationError}</Text>
+              ) : null}
+            </PremiumCard>
+          )}
         </Animated.View>
+
+        {/* Host Profile */}
+        {hostProfile && (
+          <Animated.View entering={FadeInDown.delay(180).duration(260)}>
+            <PremiumCard style={styles.mainCard}>
+              <SectionTitle title="Your Host" topSpacing={Spacing.xs} />
+              <View style={styles.hostRow}>
+                <View style={styles.hostAvatar}>
+                  <Text style={styles.hostAvatarText}>
+                    {hostProfile.displayName?.charAt(0)?.toUpperCase() ?? "H"}
+                  </Text>
+                </View>
+                <View style={styles.hostInfo}>
+                  <Text style={Typography.cardTitle}>{hostProfile.displayName}</Text>
+                  <Text style={Typography.caption}>
+                    Host since {new Date(hostProfile.createdAtIso).getFullYear()}
+                  </Text>
+                  {(hostProfile as any).avgResponseMinutes != null && (
+                    <Text style={[Typography.caption, { color: Colors.textMuted, marginTop: 2 }]}>
+                      {formatResponseTime((hostProfile as any).avgResponseMinutes)}
+                    </Text>
+                  )}
+                </View>
+              </View>
+              {charger.availabilityNote ? (
+                <View style={styles.hostQuote}>
+                  <Text style={[Typography.body, { fontStyle: "italic" }]}>
+                    "{charger.availabilityNote}"
+                  </Text>
+                </View>
+              ) : null}
+            </PremiumCard>
+          </Animated.View>
+        )}
 
         {/* Reviews */}
         <Animated.View entering={FadeInDown.delay(200).duration(260)}>
@@ -407,17 +551,33 @@ export default function ChargerDetailRoute() {
               </Text>
             )}
           </View>
-          <GradientButton
-            label="Request Booking"
-            onPress={submitBooking}
-            loading={submitting}
-            disabled={Boolean(bookingValidationError)}
-            style={styles.bookBtn}
-          />
+          {activeBooking ? (
+            <SecondaryButton
+              label="View Bookings"
+              onPress={() => router.push("/(app)/(tabs)/bookings" as any)}
+              style={styles.bookBtn}
+            />
+          ) : (
+            <GradientButton
+              label="Request Booking"
+              onPress={submitBooking}
+              loading={submitting}
+              disabled={Boolean(bookingValidationError)}
+              style={styles.bookBtn}
+            />
+          )}
         </View>
       </StickyActionBar>
     </SafeAreaView>
   );
+}
+
+function formatResponseTime(minutes: number | null | undefined): string {
+  if (minutes == null) return "New host";
+  if (minutes < 60) return `Usually responds within ${minutes} minutes`;
+  if (minutes < 240) return `Usually responds within ${Math.round(minutes / 60)} hours`;
+  if (minutes < 1440) return "Usually responds same day";
+  return "Response time may vary";
 }
 
 function getAmenityIcon(amenity: string): keyof typeof Ionicons.glyphMap {
@@ -453,17 +613,11 @@ const styles = StyleSheet.create({
     ...Shadows.subtle,
   },
   heroHeader: {
-    height: 180,
+    height: 220,
     borderRadius: Radius.card,
-    backgroundColor: Colors.surfaceAlt,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: Spacing.md,
-    borderWidth: 1,
-    borderColor: Colors.glassBorder,
-  },
-  heroIcon: {
-    fontSize: 48,
   },
   heroText: {
     ...Typography.caption,
@@ -550,10 +704,7 @@ const styles = StyleSheet.create({
     padding: Spacing.sm,
     marginTop: Spacing.sm,
   },
-  availabilityIcon: {
-    fontSize: 24,
-    marginTop: 2,
-  },
+  // availabilityIcon handled by Ionicons inline
   availabilityTitle: {
     ...Typography.cardTitle,
   },
@@ -609,6 +760,15 @@ const styles = StyleSheet.create({
     color: Colors.error,
     marginTop: Spacing.xs,
   },
+  activeBookingBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.md,
+    backgroundColor: Colors.surfaceAlt,
+    borderRadius: Radius.md,
+    padding: Spacing.md,
+    marginTop: Spacing.sm,
+  },
   // Reviews
   reviewRow: {
     borderTopWidth: 1,
@@ -657,5 +817,65 @@ const styles = StyleSheet.create({
   bookBtn: {
     flex: 0,
     width: 180,
+  },
+  // Stats row
+  statsRow: {
+    flexDirection: "row",
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.xl,
+    padding: Spacing.lg,
+    marginBottom: Spacing.md,
+    ...Shadows.subtle,
+  },
+  statItem: {
+    flex: 1,
+    alignItems: "center",
+  },
+  statValue: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: Colors.textPrimary,
+    fontFamily: "Syne_700Bold",
+  },
+  statLabel: {
+    ...Typography.caption,
+    color: Colors.textMuted,
+    marginTop: 2,
+  },
+  statDivider: {
+    width: 1,
+    backgroundColor: Colors.border,
+    marginHorizontal: Spacing.sm,
+  },
+  // Host profile
+  hostRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.md,
+    marginTop: Spacing.sm,
+  },
+  hostAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: Colors.accent,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  hostAvatarText: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: Colors.textInverse,
+  },
+  hostInfo: {
+    flex: 1,
+  },
+  hostQuote: {
+    backgroundColor: Colors.surfaceAlt,
+    borderRadius: Radius.md,
+    padding: Spacing.md,
+    marginTop: Spacing.md,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.accent,
   },
 });

@@ -93,7 +93,7 @@ export default function HostBookingsTabScreen() {
             <FlatList
               data={segmentData}
               keyExtractor={(item) => item.id}
-              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#00BFA5" />}
               showsVerticalScrollIndicator={false}
               contentContainerStyle={styles.listContent}
               renderItem={({ item, index }) => {
@@ -189,7 +189,7 @@ export default function HostBookingsTabScreen() {
                               </PressableScale>
                             </>
                           )}
-                          {isActive && (
+                          {isActive && item.status === "in_progress" && (
                             <PressableScale
                               onPress={() => actions.markCompleted(item)}
                               style={styles.completeBtn}
@@ -197,6 +197,12 @@ export default function HostBookingsTabScreen() {
                               <Ionicons name="checkmark-done" size={16} color={Colors.textInverse} />
                               <Text style={styles.completeBtnText}>Mark Complete</Text>
                             </PressableScale>
+                          )}
+                          {isActive && item.status === "approved" && (
+                            <View style={styles.waitingNote}>
+                              <Ionicons name="time-outline" size={14} color={Colors.textMuted} />
+                              <Text style={styles.waitingNoteText}>Waiting for driver to arrive</Text>
+                            </View>
                           )}
                         </View>
                       )}
@@ -374,6 +380,17 @@ const styles = StyleSheet.create({
     color: Colors.textInverse,
   },
 
+  waitingNote: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 10,
+  },
+  waitingNoteText: {
+    fontSize: 13,
+    color: Colors.textMuted,
+  },
   // Empty
   emptyWrap: {
     alignItems: "center",

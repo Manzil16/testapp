@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors, Typography, Spacing, Radius, Shadows } from "@/src/features/shared/theme";
-import { ensurePublicUrl } from "@/src/services/imageService";
+import { getThumbnailUrl } from "@/src/services/imageService";
 
 const CARD_WIDTH = 200;
 const IMAGE_HEIGHT = 120;
@@ -66,7 +66,7 @@ export function NearbyChargerCard({
               }}
               renderItem={({ item }) => (
                 <Image
-                  source={{ uri: ensurePublicUrl(item) }}
+                  source={{ uri: getThumbnailUrl(item) }}
                   style={styles.image}
                   resizeMode="cover"
                 />

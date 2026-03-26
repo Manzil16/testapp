@@ -1,8 +1,8 @@
 import { useCallback, useMemo, useState } from "react";
 import {
-  Alert,
   FlatList,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -10,840 +10,348 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import Animated from "react-native-reanimated";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  AnimatedListItem,
-  Avatar,
-  BottomSheet,
   EmptyStateCard,
+  FilterChipRow,
   InfoPill,
   PrimaryCTA,
-  PressableScale,
-  ScreenContainer,
   SearchBar,
   SectionTitle,
-  SecondaryButton,
-  SegmentedControl,
   StatCard,
   StatCardSkeleton,
+  ScreenContainer,
   Typography,
   Colors,
   Radius,
-  Shadows,
   Spacing,
+  Shadows,
 } from "@/src/components";
-import { useAuth } from "@/src/features/auth/auth-context";
-import { useThemeColors } from "@/src/hooks/useThemeColors";
 import { useEntranceAnimation } from "@/src/hooks";
-import { AppConfig } from "@/src/constants/app";
-import {
-  listChargers,
-  updateChargerStatus,
-  deleteCharger,
-  type Charger,
-} from "@/src/features/chargers";
-import {
-  listVerificationQueue,
-} from "@/src/features/verification";
-import {
-  listAllProfiles,
-  deleteProfile,
-  updateUserProfile,
-  type AppRole,
-  type UserProfile,
-} from "@/src/features/users";
-import {
-  listAllBookings,
-  updateBookingStatus,
-  type Booking,
-} from "@/src/features/bookings";
+import { useAdminEventLog } from "@/src/hooks/useAdminEventLog";
+import { useDebounce } from "@/src/hooks/useDebounce";
+import type { PlatformEvent } from "@/src/features/admin/admin.repository";
 
-type AdminPanel = "users" | "chargers" | "bookings" | "revenue";
-type RevenueWindow = "week" | "month" | "all";
-type BookingFilter = "all" | "pending" | "confirmed" | "done" | "declined";
+const EVENT_TYPE_COLORS: Record<string, string> = {
+  booking: Colors.accent,
+  payment: Colors.info,
+  charger: Colors.warning,
+  user: "#8B5CF6",
+  session: Colors.accent,
+  review: Colors.success,
+  image: "#6B7280",
+  admin: "#F59E0B",
+};
 
-const BOOKING_FILTER_SEGMENTS = [
+const QUICK_FILTERS = [
   { id: "all", label: "All" },
-  { id: "pending", label: "Pending" },
-  { id: "confirmed", label: "Confirmed" },
-  { id: "done", label: "Done" },
-  { id: "declined", label: "Declined" },
+  { id: "needs_action", label: "Needs action" },
+  { id: "payments", label: "Payments captured" },
+  { id: "cancellations", label: "Cancellations" },
+  { id: "new_chargers", label: "New chargers" },
+  { id: "completed", label: "Completed sessions" },
 ];
 
-const REVENUE_SEGMENTS = [
-  { id: "week", label: "Week" },
-  { id: "month", label: "Month" },
-  { id: "all", label: "All Time" },
+const ACTOR_ROLES = [
+  { id: "all", label: "All roles" },
+  { id: "driver", label: "Driver" },
+  { id: "host", label: "Host" },
+  { id: "admin", label: "Admin" },
+  { id: "system", label: "System" },
 ];
 
-function statusMatchesFilter(status: string, filter: BookingFilter): boolean {
-  if (filter === "all") return true;
-  if (filter === "pending") return status === "requested";
-  if (filter === "confirmed") return status === "approved" || status === "in_progress";
-  if (filter === "done") return status === "completed";
-  if (filter === "declined") return status === "declined" || status === "cancelled";
-  return false;
+const DATE_RANGES = [
+  { id: "all", label: "All time" },
+  { id: "today", label: "Today" },
+  { id: "7d", label: "7 days" },
+  { id: "30d", label: "30 days" },
+];
+
+function getDateFrom(rangeId: string): string | undefined {
+  const now = new Date();
+  if (rangeId === "today") {
+    now.setHours(0, 0, 0, 0);
+    return now.toISOString();
+  }
+  if (rangeId === "7d") {
+    now.setDate(now.getDate() - 7);
+    return now.toISOString();
+  }
+  if (rangeId === "30d") {
+    now.setDate(now.getDate() - 30);
+    return now.toISOString();
+  }
+  return undefined;
 }
 
-function isWithinWindow(isoDate: string | undefined, window: RevenueWindow): boolean {
-  if (window === "all" || !isoDate) return true;
-  const d = new Date(isoDate);
-  const now = Date.now();
-  if (window === "week") return now - d.getTime() < 7 * 86400000;
-  return now - d.getTime() < 30 * 86400000;
+function getEventTypesForQuickFilter(id: string): string[] | undefined {
+  switch (id) {
+    case "needs_action":
+      return ["charger.submitted"];
+    case "payments":
+      return ["payment.captured"];
+    case "cancellations":
+      return ["booking.cancelled"];
+    case "new_chargers":
+      return ["charger.submitted"];
+    case "completed":
+      return ["booking.completed", "session.ended"];
+    default:
+      return undefined;
+  }
 }
 
-export default function AdminOverviewTabScreen() {
-  const { profile } = useAuth();
-  const colors = useThemeColors();
+function formatTimeAgo(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return "Just now";
+  if (min < 60) return `${min}m ago`;
+  const hrs = Math.floor(min / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+}
+
+function getEventColor(eventType: string): string {
+  const category = eventType.split(".")[0];
+  return EVENT_TYPE_COLORS[category] ?? Colors.textMuted;
+}
+
+export default function AdminOverviewScreen() {
   const entranceStyle = useEntranceAnimation();
-  const queryClient = useQueryClient();
+  const {
+    events,
+    total,
+    stats,
+    isLoading,
+    isFetching,
+    filter,
+    setFilter,
+    loadMore,
+    refetch,
+  } = useAdminEventLog();
 
-  const [selectedPanel, setSelectedPanel] = useState<AdminPanel | null>(null);
   const [searchText, setSearchText] = useState("");
+  const [activeQuickFilter, setActiveQuickFilter] = useState("all");
+  const [activeRoleFilter, setActiveRoleFilter] = useState("all");
+  const [activeDateFilter, setActiveDateFilter] = useState("all");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  // Management sheets
-  const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
-  const [selectedCharger, setSelectedCharger] = useState<Charger | null>(null);
-  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
-  const [actionLoading, setActionLoading] = useState(false);
+  const debouncedSearch = useDebounce(searchText, 400);
 
-  // Filters
-  const [bookingFilter, setBookingFilter] = useState<BookingFilter>("all");
-  const [revenueWindow, setRevenueWindow] = useState<RevenueWindow>("all");
-
-  // ── Data queries ──
-  const chargersQuery = useQuery({
-    queryKey: ["chargers", "all"],
-    queryFn: () => listChargers(),
-  });
-
-  const bookingsQuery = useQuery({
-    queryKey: ["bookings", "all"],
-    queryFn: listAllBookings,
-  });
-
-  const usersQuery = useQuery({
-    queryKey: ["profiles", "all"],
-    queryFn: listAllProfiles,
-  });
-
-  useQuery({
-    queryKey: ["verifications", "queue"],
-    queryFn: listVerificationQueue,
-  });
-
-  const chargers = useMemo(() => chargersQuery.data ?? [], [chargersQuery.data]);
-  const bookings = useMemo(() => bookingsQuery.data ?? [], [bookingsQuery.data]);
-  const users = useMemo(() => usersQuery.data ?? [], [usersQuery.data]);
-  const pendingChargerCount = useMemo(
-    () => chargers.filter((c) => c.status === "pending").length,
-    [chargers]
-  );
-  const isLoading = chargersQuery.isLoading || bookingsQuery.isLoading || usersQuery.isLoading;
-  const error =
-    chargersQuery.error?.message || bookingsQuery.error?.message || usersQuery.error?.message || null;
-
-  const chargerById = useMemo(
-    () => Object.fromEntries(chargers.map((item) => [item.id, item])),
-    [chargers]
-  );
-
-  const userById = useMemo(
-    () => Object.fromEntries(users.map((u) => [u.id, u])),
-    [users]
-  );
-
-  // ── Revenue calculations ──
-  const filteredCompletedBookings = useMemo(
-    () =>
-      bookings.filter(
-        (b) => b.status === "completed" && isWithinWindow(b.updatedAtIso, revenueWindow)
-      ),
-    [bookings, revenueWindow]
-  );
-
-  const estimatedRevenue = useMemo(() => {
-    return filteredCompletedBookings.reduce((sum, booking) => {
-      const charger = chargerById[booking.chargerId];
-      if (!charger) return sum;
-      return sum + booking.estimatedKWh * charger.pricingPerKwh;
-    }, 0);
-  }, [filteredCompletedBookings, chargerById]);
-
-  const revenueByCharger = useMemo(() => {
-    const grouped: Record<
-      string,
-      { id: string; chargerName: string; hostUserId: string; bookingCount: number; kWh: number; revenue: number }
-    > = {};
-
-    filteredCompletedBookings.forEach((booking) => {
-      const charger = chargerById[booking.chargerId];
-      if (!charger) return;
-
-      if (!grouped[booking.chargerId]) {
-        grouped[booking.chargerId] = {
-          id: booking.chargerId,
-          chargerName: charger.name,
-          hostUserId: charger.hostUserId,
-          bookingCount: 0,
-          kWh: 0,
-          revenue: 0,
-        };
-      }
-
-      grouped[booking.chargerId].bookingCount += 1;
-      grouped[booking.chargerId].kWh += booking.estimatedKWh;
-      grouped[booking.chargerId].revenue += booking.estimatedKWh * charger.pricingPerKwh;
-    });
-
-    return Object.values(grouped).sort((a, b) => b.revenue - a.revenue);
-  }, [filteredCompletedBookings, chargerById]);
-
-  const revenueByHost = useMemo(() => {
-    const grouped: Record<string, { hostId: string; hostName: string; revenue: number; bookingCount: number }> = {};
-
-    revenueByCharger.forEach((row) => {
-      const host = userById[row.hostUserId];
-      const hostName = host?.displayName || row.hostUserId.slice(0, 8);
-
-      if (!grouped[row.hostUserId]) {
-        grouped[row.hostUserId] = { hostId: row.hostUserId, hostName, revenue: 0, bookingCount: 0 };
-      }
-      grouped[row.hostUserId].revenue += row.revenue;
-      grouped[row.hostUserId].bookingCount += row.bookingCount;
-    });
-
-    return Object.values(grouped).sort((a, b) => b.revenue - a.revenue);
-  }, [revenueByCharger, userById]);
-
-  const normalizedSearch = searchText.trim().toLowerCase();
-
-  // ── Filtered bookings for booking panel ──
-  const filteredBookings = useMemo(() => {
-    return bookings
-      .filter((b) => statusMatchesFilter(b.status, bookingFilter))
-      .filter((b) => {
-        if (!normalizedSearch) return true;
-        const chargerName = chargerById[b.chargerId]?.name || "";
-        const driverName = userById[b.driverUserId]?.displayName || "";
-        const hostName = userById[b.hostUserId]?.displayName || "";
-        const haystack = `${b.id} ${b.status} ${chargerName} ${driverName} ${hostName}`.toLowerCase();
-        return haystack.includes(normalizedSearch);
-      });
-  }, [bookings, bookingFilter, normalizedSearch, chargerById, userById]);
-
-  const filteredUsers = useMemo(() => {
-    return users.filter((user) => {
-      if (!normalizedSearch) return true;
-      const haystack = `${user.id} ${user.displayName} ${user.email} ${user.role}`.toLowerCase();
-      return haystack.includes(normalizedSearch);
-    });
-  }, [users, normalizedSearch]);
-
-  const filteredChargers = useMemo(() => {
-    return chargers.filter((charger) => {
-      if (!normalizedSearch) return true;
-      const hostName = userById[charger.hostUserId]?.displayName || "";
-      const haystack =
-        `${charger.id} ${charger.name} ${charger.suburb} ${charger.state} ${charger.status} ${hostName}`.toLowerCase();
-      return haystack.includes(normalizedSearch);
-    });
-  }, [chargers, normalizedSearch, userById]);
-
-  const invalidateAll = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: ["chargers"] });
-    queryClient.invalidateQueries({ queryKey: ["bookings"] });
-    queryClient.invalidateQueries({ queryKey: ["profiles"] });
-    queryClient.invalidateQueries({ queryKey: ["verifications"] });
-  }, [queryClient]);
-
-  // ── Admin Actions ──
-  const handleChangeRole = useCallback(
-    async (userId: string, newRole: AppRole) => {
-      setActionLoading(true);
-      try {
-        await updateUserProfile(userId, { role: newRole });
-        invalidateAll();
-        setSelectedUser(null);
-      } catch (err) {
-        Alert.alert("Error", err instanceof Error ? err.message : "Failed to update role.");
-      } finally {
-        setActionLoading(false);
-      }
+  // Apply search with debounce
+  const handleSearch = useCallback(
+    (text: string) => {
+      setSearchText(text);
     },
-    [invalidateAll]
+    []
   );
 
-  const handleDeleteUser = useCallback(async (userId: string) => {
-    Alert.alert("Delete User", "This will permanently remove the user profile. Continue?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          setActionLoading(true);
-          try {
-            await deleteProfile(userId);
-            invalidateAll();
-            setSelectedUser(null);
-          } catch (err) {
-            Alert.alert("Error", err instanceof Error ? err.message : "Failed to delete user.");
-          } finally {
-            setActionLoading(false);
-          }
-        },
-      },
-    ]);
-  }, [invalidateAll]);
+  // Effect-like: update filter when debounced search changes
+  useMemo(() => {
+    setFilter({ search: debouncedSearch || undefined });
+  }, [debouncedSearch, setFilter]);
 
-  const handleChargerAction = useCallback(
-    async (chargerId: string, action: "approve" | "reject" | "suspend" | "remove") => {
-      setActionLoading(true);
-      try {
-        if (action === "remove") {
-          await deleteCharger(chargerId);
-        } else if (action === "approve") {
-          await updateChargerStatus(chargerId, "approved", AppConfig.VERIFICATION.approvedScore);
-        } else if (action === "suspend") {
-          await updateChargerStatus(chargerId, "rejected", AppConfig.VERIFICATION.suspendScore);
-        } else {
-          await updateChargerStatus(chargerId, "rejected", AppConfig.VERIFICATION.rejectedScore);
-        }
-        invalidateAll();
-        setSelectedCharger(null);
-      } catch (err) {
-        Alert.alert("Error", err instanceof Error ? err.message : "Failed to update charger.");
-      } finally {
-        setActionLoading(false);
-      }
+  const handleQuickFilter = useCallback(
+    (id: string) => {
+      setActiveQuickFilter(id);
+      setFilter({ eventTypes: getEventTypesForQuickFilter(id) });
     },
-    [invalidateAll]
+    [setFilter]
   );
 
-  const handleBookingAction = useCallback(
-    async (bookingId: string, newStatus: "approved" | "declined" | "cancelled") => {
-      setActionLoading(true);
-      try {
-        await updateBookingStatus(bookingId, newStatus);
-        invalidateAll();
-        setSelectedBooking(null);
-      } catch (err) {
-        Alert.alert("Error", err instanceof Error ? err.message : "Failed to update booking.");
-      } finally {
-        setActionLoading(false);
-      }
+  const handleRoleFilter = useCallback(
+    (id: string) => {
+      setActiveRoleFilter(id);
+      setFilter({ actorRole: id === "all" ? undefined : id });
     },
-    [invalidateAll]
+    [setFilter]
   );
 
-  const statusPillVariant = (status: string) => {
-    if (status === "approved" || status === "completed") return "success" as const;
-    if (status === "pending" || status === "requested") return "warning" as const;
-    if (status === "rejected" || status === "declined" || status === "cancelled")
-      return "error" as const;
-    return "default" as const;
-  };
-
-  // ── Render helpers ──
-  const renderUserRow = ({ item, index }: { item: UserProfile; index: number }) => (
-    <AnimatedListItem index={index}>
-      <Pressable
-        style={styles.adminCard}
-        onPress={() => setSelectedUser(item)}
-      >
-        <View style={styles.cardTopRow}>
-          <Avatar name={item.displayName} size="sm" />
-          <View style={{ flex: 1, marginLeft: Spacing.md }}>
-            <Text style={styles.cardName}>{item.displayName}</Text>
-            <Text style={styles.cardMeta}>{item.email}</Text>
-          </View>
-          <InfoPill
-            label={item.role.toUpperCase()}
-            variant={item.role === "admin" ? "primary" : item.role === "host" ? "info" : "default"}
-          />
-        </View>
-        <View style={styles.cardDetailsRow}>
-          <View style={styles.cardDetailItem}>
-            <Ionicons name="finger-print-outline" size={14} color={Colors.textMuted} />
-            <Text style={styles.cardDetailText}>{item.id.slice(0, 10)}…</Text>
-          </View>
-        </View>
-      </Pressable>
-    </AnimatedListItem>
+  const handleDateFilter = useCallback(
+    (id: string) => {
+      setActiveDateFilter(id);
+      setFilter({ dateFrom: getDateFrom(id) });
+    },
+    [setFilter]
   );
 
-  const renderChargerRow = ({ item, index }: { item: Charger; index: number }) => {
-    const host = userById[item.hostUserId];
-    return (
-      <AnimatedListItem index={index}>
-        <Pressable
-          style={styles.adminCard}
-          onPress={() => setSelectedCharger(item)}
-        >
-          <View style={styles.cardTopRow}>
-            <View style={styles.cardIconWrap}>
-              <Ionicons name="flash" size={18} color={Colors.primary} />
-            </View>
-            <View style={{ flex: 1, marginLeft: Spacing.md }}>
-              <Text style={styles.cardName}>{item.name}</Text>
-              <Text style={styles.cardMeta}>{item.suburb}, {item.state}</Text>
-            </View>
-            <InfoPill label={item.status} variant={statusPillVariant(item.status)} />
-          </View>
-          <View style={styles.cardDetailsRow}>
-            <View style={styles.cardDetailItem}>
-              <Ionicons name="speedometer-outline" size={14} color={Colors.textMuted} />
-              <Text style={styles.cardDetailText}>{item.maxPowerKw}kW</Text>
-            </View>
-            <View style={styles.cardDetailItem}>
-              <Ionicons name="pricetag-outline" size={14} color={Colors.textMuted} />
-              <Text style={styles.cardDetailText}>${item.pricingPerKwh.toFixed(2)}/kWh</Text>
-            </View>
-            <View style={styles.cardDetailItem}>
-              <Ionicons name="person-outline" size={14} color={Colors.textMuted} />
-              <Text style={styles.cardDetailText}>{host?.displayName || item.hostUserId.slice(0, 8)}</Text>
+  const renderEvent = useCallback(
+    ({ item }: { item: PlatformEvent }) => {
+      const isExpanded = expandedId === item.id;
+      const color = getEventColor(item.eventType);
+
+      return (
+        <Pressable onPress={() => setExpandedId(isExpanded ? null : item.id)}>
+          <View style={styles.eventRow}>
+            <View style={[styles.eventDot, { backgroundColor: color }]} />
+            <View style={styles.eventContent}>
+              <View style={styles.eventTopRow}>
+                <Text style={styles.eventType} numberOfLines={1}>
+                  {item.eventType.replace(".", " ")}
+                </Text>
+                <Text style={styles.eventTime}>{formatTimeAgo(item.createdAt)}</Text>
+              </View>
+              <Text style={styles.eventActor} numberOfLines={1}>
+                {item.actor?.displayName ?? item.actorRole ?? "System"}
+                {item.metadata?.charger_name ? ` · ${item.metadata.charger_name}` : ""}
+              </Text>
+              {item.amountCents != null && (
+                <Text
+                  style={[
+                    styles.eventAmount,
+                    { color: item.amountCents >= 0 ? Colors.success : Colors.error },
+                  ]}
+                >
+                  ${(Math.abs(item.amountCents) / 100).toFixed(2)}
+                </Text>
+              )}
+
+              {/* Expanded metadata */}
+              {isExpanded && item.metadata && (
+                <View style={styles.metadataBox}>
+                  {Object.entries(item.metadata).map(([key, value]) => (
+                    <View key={key} style={styles.metadataRow}>
+                      <Text style={styles.metadataKey}>{key}</Text>
+                      <Text style={styles.metadataValue} numberOfLines={2}>
+                        {typeof value === "object" ? JSON.stringify(value) : String(value ?? "")}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              )}
             </View>
           </View>
         </Pressable>
-      </AnimatedListItem>
-    );
-  };
-
-  const renderBookingRow = ({ item, index }: { item: Booking; index: number }) => {
-    const charger = chargerById[item.chargerId];
-    const chargerName = charger?.name || item.chargerId.slice(0, 8);
-    const driverName = userById[item.driverUserId]?.displayName || item.driverUserId.slice(0, 8);
-    const hostName = userById[item.hostUserId]?.displayName || item.hostUserId.slice(0, 8);
-    const isTerminal = item.status === "completed" || item.status === "cancelled" || item.status === "declined";
-    return (
-      <AnimatedListItem index={index}>
-        <Pressable
-          style={[styles.adminCard, isTerminal && styles.adminCardFaded]}
-          onPress={() => setSelectedBooking(item)}
-        >
-          <View style={styles.cardTopRow}>
-            <Avatar name={driverName} size="sm" />
-            <View style={{ flex: 1, marginLeft: Spacing.md }}>
-              <Text style={styles.cardName}>{chargerName}</Text>
-              <Text style={styles.cardMeta}>Driver: {driverName}</Text>
-            </View>
-            <InfoPill label={item.status.replace("_", " ")} variant={statusPillVariant(item.status)} />
-          </View>
-          <View style={styles.cardDetailsRow}>
-            <View style={styles.cardDetailItem}>
-              <Ionicons name="battery-charging-outline" size={14} color={Colors.textMuted} />
-              <Text style={styles.cardDetailText}>{item.estimatedKWh.toFixed(1)} kWh</Text>
-            </View>
-            <View style={styles.cardDetailItem}>
-              <Ionicons name="person-outline" size={14} color={Colors.textMuted} />
-              <Text style={styles.cardDetailText}>Host: {hostName}</Text>
-            </View>
-          </View>
-          {item.status === "requested" && (
-            <View style={styles.cardActionRow}>
-              <PressableScale
-                onPress={() => handleBookingAction(item.id, "declined")}
-                style={styles.cardDeclineBtn}
-              >
-                <Ionicons name="close" size={14} color={Colors.error} />
-                <Text style={styles.cardDeclineText}>Decline</Text>
-              </PressableScale>
-              <PressableScale
-                onPress={() => handleBookingAction(item.id, "approved")}
-                style={styles.cardApproveBtn}
-              >
-                <Ionicons name="checkmark" size={14} color="#FFF" />
-                <Text style={styles.cardApproveText}>Approve</Text>
-              </PressableScale>
-            </View>
-          )}
-        </Pressable>
-      </AnimatedListItem>
-    );
-  };
-
-  const renderRevenueRow = ({ item, index }: { item: (typeof revenueByCharger)[0]; index: number }) => (
-    <AnimatedListItem index={index}>
-      <View style={styles.adminCard}>
-        <View style={styles.cardTopRow}>
-          <View style={styles.cardIconWrap}>
-            <Ionicons name="flash" size={18} color={Colors.primary} />
-          </View>
-          <View style={{ flex: 1, marginLeft: Spacing.md }}>
-            <Text style={styles.cardName}>{item.chargerName}</Text>
-            <Text style={styles.cardMeta}>
-              {item.bookingCount} bookings · {item.kWh.toFixed(1)} kWh
-            </Text>
-          </View>
-          <Text style={styles.revenueValue}>${item.revenue.toFixed(2)}</Text>
-        </View>
-      </View>
-    </AnimatedListItem>
+      );
+    },
+    [expandedId]
   );
-
-  const panelPlaceholder =
-    selectedPanel === "users"
-      ? "Search name, email, role, or id"
-      : selectedPanel === "chargers"
-      ? "Search charger, suburb, host, or status"
-      : selectedPanel === "bookings"
-      ? "Search booking, charger, driver, or host"
-      : "Search charger name";
 
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={["bottom"]}>
+    <SafeAreaView style={styles.safe} edges={["bottom"]}>
       <Animated.View style={[{ flex: 1 }, entranceStyle]}>
-      <ScreenContainer scrollable={false}>
-        <View style={styles.headerRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.pageTitle}>Admin Panel</Text>
-            <Text style={styles.pageSubtitle}>Platform metrics and management</Text>
-          </View>
-          <Avatar uri={profile?.avatarUrl} name={profile?.displayName || "Admin"} size="md" />
-        </View>
+        <ScreenContainer scrollable={false}>
+          <Text style={Typography.pageTitle}>Platform Overview</Text>
 
-        {error ? (
-          <EmptyStateCard icon="⚠️" title="Some metrics could not load" message={error} />
-        ) : null}
-
-        {isLoading ? (
-          <View style={styles.statRow}>
-            <StatCardSkeleton />
-            <StatCardSkeleton />
-            <StatCardSkeleton />
-            <StatCardSkeleton />
-          </View>
-        ) : (
-          <View style={styles.statRow}>
-            <StatCard
-              icon="👤"
-              value={users.length}
-              label="Users"
-              onPress={() => { setSelectedPanel("users"); setSearchText(""); }}
-            />
-            <StatCard
-              icon="🔌"
-              value={chargers.length}
-              label="Chargers"
-              onPress={() => { setSelectedPanel("chargers"); setSearchText(""); }}
-            />
-            <StatCard
-              icon="⏳"
-              value={pendingChargerCount}
-              label="Pending"
-              onPress={() => { setSelectedPanel("chargers"); setSearchText(""); }}
-            />
-            <StatCard
-              icon="💰"
-              value={`$${estimatedRevenue.toFixed(0)}`}
-              label="Revenue"
-              onPress={() => { setSelectedPanel("revenue"); setSearchText(""); }}
-            />
-          </View>
-        )}
-
-        {/* ── Panel Content ── */}
-        {selectedPanel ? (
-          <View style={styles.explorerWrap}>
-            <View style={styles.panelHeader}>
-              <Text style={styles.panelTitle}>
-                {selectedPanel === "users"
-                  ? "User Management"
-                  : selectedPanel === "chargers"
-                  ? "Charger Management"
-                  : selectedPanel === "bookings"
-                  ? "Booking Management"
-                  : "Revenue Dashboard"}
-              </Text>
-              <PressableScale onPress={() => setSelectedPanel(null)} style={styles.closeBtn}>
-                <Ionicons name="close-circle" size={28} color={Colors.textMuted} />
-              </PressableScale>
-            </View>
-
-            {selectedPanel === "bookings" ? (
-              <SegmentedControl
-                segments={BOOKING_FILTER_SEGMENTS}
-                activeId={bookingFilter}
-                onChange={(id) => setBookingFilter(id as BookingFilter)}
-              />
-            ) : null}
-
-            {selectedPanel === "revenue" ? (
-              <SegmentedControl
-                segments={REVENUE_SEGMENTS}
-                activeId={revenueWindow}
-                onChange={(id) => setRevenueWindow(id as RevenueWindow)}
-              />
-            ) : null}
-
-            {selectedPanel !== "revenue" ? (
-              <SearchBar value={searchText} onChangeText={setSearchText} placeholder={panelPlaceholder} />
-            ) : null}
-
-            {selectedPanel === "users" ? (
-              <FlatList
-                data={filteredUsers}
-                keyExtractor={(item) => item.id}
-                renderItem={renderUserRow}
-                scrollEnabled={false}
-                contentContainerStyle={styles.explorerListContent}
-                ListEmptyComponent={<EmptyStateCard icon="🔎" title="No matching users" message="Adjust your search." />}
-              />
-            ) : null}
-
-            {selectedPanel === "chargers" ? (
-              <FlatList
-                data={filteredChargers}
-                keyExtractor={(item) => item.id}
-                renderItem={renderChargerRow}
-                scrollEnabled={false}
-                contentContainerStyle={styles.explorerListContent}
-                ListEmptyComponent={<EmptyStateCard icon="🔎" title="No matching chargers" message="Adjust your search." />}
-              />
-            ) : null}
-
-            {selectedPanel === "bookings" ? (
-              <FlatList
-                data={filteredBookings}
-                keyExtractor={(item) => item.id}
-                renderItem={renderBookingRow}
-                scrollEnabled={false}
-                contentContainerStyle={styles.explorerListContent}
-                ListEmptyComponent={<EmptyStateCard icon="🔎" title="No matching bookings" message="Adjust your filters." />}
-              />
-            ) : null}
-
-            {selectedPanel === "revenue" ? (
-              <View style={styles.revenueContent}>
-                <View style={styles.revenueTotalCard}>
-                  <Text style={styles.revenueTotalLabel}>Total Revenue</Text>
-                  <Text style={styles.revenueTotalValue}>${estimatedRevenue.toFixed(2)}</Text>
-                  <Text style={styles.revenueTotalSub}>
-                    {filteredCompletedBookings.length} completed bookings
-                  </Text>
-                </View>
-
-                <SectionTitle title="Top Chargers" subtitle="By revenue earned" />
-                <FlatList
-                  data={revenueByCharger.slice(0, 10)}
-                  keyExtractor={(item) => item.id}
-                  renderItem={renderRevenueRow}
-                  scrollEnabled={false}
-                  contentContainerStyle={styles.explorerListContent}
-                  ListEmptyComponent={<EmptyStateCard icon="📊" title="No revenue data" message="Completed bookings will appear here." />}
+          {/* Stats Row */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.statsScroll}
+            contentContainerStyle={styles.statsContent}
+          >
+            {stats ? (
+              <>
+                <StatCard
+                  icon="cash"
+                  label="Revenue today"
+                  value={`$${stats.revenueToday.toFixed(2)}`}
+                  style={styles.statCard}
                 />
+                <StatCard
+                  icon="flash"
+                  label="Active sessions"
+                  value={String(stats.activeSessions)}
+                  style={styles.statCard}
+                />
+                <StatCard
+                  icon="time"
+                  label="Pending approvals"
+                  value={String(stats.pendingApprovals)}
+                  style={styles.statCard}
+                />
+                <StatCard
+                  icon="person-add"
+                  label="New users (7d)"
+                  value={String(stats.newUsersThisWeek)}
+                  style={styles.statCard}
+                />
+              </>
+            ) : (
+              <>
+                <StatCardSkeleton />
+                <StatCardSkeleton />
+                <StatCardSkeleton />
+              </>
+            )}
+          </ScrollView>
 
-                <SectionTitle title="Top Hosts" subtitle="By revenue earned" />
-                {revenueByHost.slice(0, 10).map((host, index) => (
-                  <AnimatedListItem key={host.hostId} index={index}>
-                    <View style={styles.adminCard}>
-                      <View style={styles.cardTopRow}>
-                        <Avatar name={host.hostName} size="sm" />
-                        <View style={{ flex: 1, marginLeft: Spacing.md }}>
-                          <Text style={styles.cardName}>{host.hostName}</Text>
-                          <Text style={styles.cardMeta}>{host.bookingCount} bookings</Text>
-                        </View>
-                        <Text style={styles.revenueValue}>${host.revenue.toFixed(2)}</Text>
-                      </View>
-                    </View>
-                  </AnimatedListItem>
-                ))}
-              </View>
-            ) : null}
-          </View>
-        ) : (
-          <EmptyStateCard
-            icon="🧭"
-            title="Open a data view"
-            message="Tap Users, Chargers, Bookings, or Revenue to manage platform data."
+          {/* Search */}
+          <SearchBar
+            value={searchText}
+            onChangeText={handleSearch}
+            placeholder="Search by name, charger, booking ID, email..."
           />
-        )}
-      </ScreenContainer>
-      </Animated.View>
 
-      {/* ── User Management Sheet ── */}
-      <BottomSheet
-        visible={!!selectedUser}
-        onClose={() => setSelectedUser(null)}
-        title={selectedUser?.displayName || "User"}
-        subtitle={selectedUser?.email}
-      >
-        {selectedUser ? (
-          <View style={styles.sheetContent}>
-            <View style={styles.sheetRow}>
-              <Text style={styles.sheetLabel}>Current Role</Text>
-              <InfoPill label={selectedUser.role.toUpperCase()} variant="primary" />
-            </View>
-            <Text style={styles.sheetLabel}>Change Role</Text>
-            <View style={styles.roleRow}>
-              {(["driver", "host", "admin"] as AppRole[]).map((role) => (
-                <SecondaryButton
-                  key={role}
-                  label={role.charAt(0).toUpperCase() + role.slice(1)}
-                  onPress={() => handleChangeRole(selectedUser.id, role)}
-                  disabled={selectedUser.role === role || actionLoading}
-                  style={styles.roleBtn}
+          {/* Filter Rows */}
+          <View style={styles.filterSection}>
+            <FilterChipRow
+              chips={DATE_RANGES}
+              activeId={activeDateFilter}
+              onSelect={handleDateFilter}
+            />
+            <FilterChipRow
+              chips={ACTOR_ROLES}
+              activeId={activeRoleFilter}
+              onSelect={handleRoleFilter}
+            />
+          </View>
+
+          {/* Quick filter chips */}
+          <FilterChipRow
+            chips={QUICK_FILTERS}
+            activeId={activeQuickFilter}
+            onSelect={handleQuickFilter}
+          />
+
+          {/* Event count */}
+          <SectionTitle
+            title={`${total} events`}
+            subtitle={isFetching ? "Updating..." : undefined}
+            topSpacing={Spacing.sm}
+          />
+
+          {/* Event List */}
+          <FlatList
+            data={events}
+            keyExtractor={(item) => item.id}
+            renderItem={renderEvent}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.listContent}
+            ListEmptyComponent={
+              isLoading ? null : (
+                <EmptyStateCard
+                  icon="📊"
+                  title="No events found"
+                  message="Try adjusting your search or filters."
+                  actionLabel="Reset filters"
+                  onAction={() => {
+                    setSearchText("");
+                    setActiveQuickFilter("all");
+                    setActiveRoleFilter("all");
+                    setActiveDateFilter("all");
+                    setFilter({
+                      search: undefined,
+                      eventTypes: undefined,
+                      actorRole: undefined,
+                      dateFrom: undefined,
+                    });
+                  }}
                 />
-              ))}
-            </View>
-            <View style={styles.sheetDivider} />
-            <PrimaryCTA
-              label="Delete User"
-              variant="danger"
-              onPress={() => handleDeleteUser(selectedUser.id)}
-              disabled={actionLoading}
-            />
-          </View>
-        ) : null}
-      </BottomSheet>
-
-      {/* ── Charger Management Sheet ── */}
-      <BottomSheet
-        visible={!!selectedCharger}
-        onClose={() => setSelectedCharger(null)}
-        title={selectedCharger?.name || "Charger"}
-        subtitle={selectedCharger ? `${selectedCharger.suburb}, ${selectedCharger.state}` : undefined}
-      >
-        {selectedCharger ? (
-          <View style={styles.sheetContent}>
-            <View style={styles.sheetRow}>
-              <Text style={styles.sheetLabel}>Status</Text>
-              <InfoPill
-                label={selectedCharger.status}
-                variant={statusPillVariant(selectedCharger.status)}
-              />
-            </View>
-            <View style={styles.sheetRow}>
-              <Text style={styles.sheetLabel}>Host</Text>
-              <Text style={styles.sheetValue}>
-                {userById[selectedCharger.hostUserId]?.displayName || selectedCharger.hostUserId.slice(0, 12)}
-              </Text>
-            </View>
-            <View style={styles.sheetRow}>
-              <Text style={styles.sheetLabel}>Power</Text>
-              <Text style={styles.sheetValue}>{selectedCharger.maxPowerKw}kW</Text>
-            </View>
-            <View style={styles.sheetRow}>
-              <Text style={styles.sheetLabel}>Price</Text>
-              <Text style={styles.sheetValue}>${selectedCharger.pricingPerKwh.toFixed(2)}/kWh</Text>
-            </View>
-            <View style={styles.sheetDivider} />
-            <View style={styles.actionRow}>
-              <SecondaryButton
-                label="Approve"
-                onPress={() => handleChargerAction(selectedCharger.id, "approve")}
-                disabled={selectedCharger.status === "approved" || actionLoading}
-                style={styles.actionBtn}
-              />
-              <SecondaryButton
-                label="Reject"
-                onPress={() => handleChargerAction(selectedCharger.id, "reject")}
-                disabled={actionLoading}
-                style={styles.actionBtn}
-              />
-            </View>
-            <SecondaryButton
-              label="Suspend Charger"
-              onPress={() =>
-                Alert.alert("Suspend Charger", "This charger will be hidden from drivers until reinstated.", [
-                  { text: "Cancel", style: "cancel" },
-                  {
-                    text: "Suspend",
-                    style: "destructive",
-                    onPress: () => handleChargerAction(selectedCharger.id, "suspend"),
-                  },
-                ])
-              }
-              disabled={selectedCharger.status === "rejected" || actionLoading}
-              style={{ marginTop: Spacing.xs }}
-            />
-            <PrimaryCTA
-              label="Remove Charger"
-              variant="danger"
-              onPress={() =>
-                Alert.alert("Remove Charger", "This will permanently delete this charger listing.", [
-                  { text: "Cancel", style: "cancel" },
-                  {
-                    text: "Remove",
-                    style: "destructive",
-                    onPress: () => handleChargerAction(selectedCharger.id, "remove"),
-                  },
-                ])
-              }
-              disabled={actionLoading}
-            />
-          </View>
-        ) : null}
-      </BottomSheet>
-
-      {/* ── Booking Detail Sheet ── */}
-      <BottomSheet
-        visible={!!selectedBooking}
-        onClose={() => setSelectedBooking(null)}
-        title={`Booking ${selectedBooking?.id.slice(0, 8) || ""}`}
-        subtitle={selectedBooking ? `Status: ${selectedBooking.status}` : undefined}
-      >
-        {selectedBooking ? (
-          <View style={styles.sheetContent}>
-            <View style={styles.sheetRow}>
-              <Text style={styles.sheetLabel}>Charger</Text>
-              <Text style={styles.sheetValue}>
-                {chargerById[selectedBooking.chargerId]?.name || selectedBooking.chargerId.slice(0, 12)}
-              </Text>
-            </View>
-            <View style={styles.sheetRow}>
-              <Text style={styles.sheetLabel}>Driver</Text>
-              <Text style={styles.sheetValue}>
-                {userById[selectedBooking.driverUserId]?.displayName || selectedBooking.driverUserId.slice(0, 12)}
-              </Text>
-            </View>
-            <View style={styles.sheetRow}>
-              <Text style={styles.sheetLabel}>Host</Text>
-              <Text style={styles.sheetValue}>
-                {userById[selectedBooking.hostUserId]?.displayName || selectedBooking.hostUserId.slice(0, 12)}
-              </Text>
-            </View>
-            <View style={styles.sheetRow}>
-              <Text style={styles.sheetLabel}>Energy</Text>
-              <Text style={styles.sheetValue}>{selectedBooking.estimatedKWh.toFixed(1)} kWh</Text>
-            </View>
-            <View style={styles.sheetRow}>
-              <Text style={styles.sheetLabel}>Status</Text>
-              <InfoPill label={selectedBooking.status} variant={statusPillVariant(selectedBooking.status)} />
-            </View>
-            <View style={styles.sheetDivider} />
-            <View style={styles.actionRow}>
-              <SecondaryButton
-                label="Approve"
-                onPress={() => handleBookingAction(selectedBooking.id, "approved")}
-                disabled={selectedBooking.status !== "requested" || actionLoading}
-                style={styles.actionBtn}
-              />
-              <SecondaryButton
-                label="Decline"
-                onPress={() => handleBookingAction(selectedBooking.id, "declined")}
-                disabled={
-                  selectedBooking.status === "completed" ||
-                  selectedBooking.status === "cancelled" ||
-                  selectedBooking.status === "declined" ||
-                  actionLoading
-                }
-                style={styles.actionBtn}
-              />
-            </View>
-            <SecondaryButton
-              label="Cancel Booking"
-              onPress={() => handleBookingAction(selectedBooking.id, "cancelled")}
-              disabled={
-                selectedBooking.status === "completed" ||
-                selectedBooking.status === "cancelled" ||
-                actionLoading
-              }
-            />
-          </View>
-        ) : null}
-      </BottomSheet>
+              )
+            }
+            ListFooterComponent={
+              events.length < total ? (
+                <PrimaryCTA
+                  label="Load more"
+                  onPress={loadMore}
+                  style={styles.loadMoreBtn}
+                />
+              ) : null
+            }
+          />
+        </ScreenContainer>
+      </Animated.View>
     </SafeAreaView>
   );
 }
@@ -853,206 +361,85 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.background,
   },
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "center",
+  statsScroll: {
+    marginVertical: Spacing.md,
+  },
+  statsContent: {
     gap: Spacing.sm,
-    marginBottom: Spacing.sm,
+    paddingRight: Spacing.md,
   },
-  pageTitle: {
-    fontSize: 28,
-    fontWeight: "800" as const,
-    color: Colors.textPrimary,
-    letterSpacing: -0.5,
+  statCard: {
+    width: 150,
   },
-  pageSubtitle: {
-    ...Typography.caption,
-    marginTop: 2,
-  },
-  statRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: Spacing.sm,
-    marginTop: Spacing.md,
-    marginBottom: Spacing.sm,
-  },
-  explorerWrap: {
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.card,
-    padding: Spacing.cardPadding,
-    ...Shadows.card,
-    flex: 1,
-  },
-  panelHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: Spacing.sm,
-  },
-  panelTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: Colors.textPrimary,
-    flex: 1,
-  },
-  closeBtn: {
-    padding: Spacing.xs,
-  },
-  explorerListContent: {
-    marginTop: Spacing.sm,
-    paddingBottom: Spacing.sm,
+  filterSection: {
     gap: Spacing.xs,
-  },
-  adminCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.xl,
-    padding: Spacing.lg,
-    marginBottom: Spacing.sm,
-    ...Shadows.card,
-  },
-  adminCardFaded: {
-    opacity: 0.65,
-  },
-  cardTopRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  cardIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: Colors.primaryLight,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  cardName: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: Colors.textPrimary,
-  },
-  cardMeta: {
-    fontSize: 12,
-    fontWeight: "400",
-    color: Colors.textMuted,
-    marginTop: 1,
-  },
-  cardDetailsRow: {
-    flexDirection: "row",
-    gap: Spacing.lg,
-    marginTop: Spacing.md,
-    paddingTop: Spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
-  },
-  cardDetailItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  cardDetailText: {
-    fontSize: 12,
-    fontWeight: "500",
-    color: Colors.textSecondary,
-  },
-  cardActionRow: {
-    flexDirection: "row",
-    gap: Spacing.sm,
-    marginTop: Spacing.md,
-  },
-  cardDeclineBtn: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingVertical: 10,
-    borderRadius: Radius.full,
-    backgroundColor: Colors.errorLight,
-  },
-  cardDeclineText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: Colors.error,
-  },
-  cardApproveBtn: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingVertical: 10,
-    borderRadius: Radius.full,
-    backgroundColor: Colors.primary,
-    ...Shadows.button,
-  },
-  cardApproveText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#FFF",
-  },
-  revenueContent: {
-    marginTop: Spacing.sm,
-  },
-  revenueTotalCard: {
-    backgroundColor: Colors.primaryLight,
-    borderRadius: Radius.lg,
-    padding: Spacing.lg,
-    alignItems: "center",
-    marginBottom: Spacing.md,
-  },
-  revenueTotalLabel: {
-    ...Typography.caption,
-    color: Colors.primary,
-  },
-  revenueTotalValue: {
-    ...Typography.pageTitle,
-    color: Colors.primary,
-    marginTop: Spacing.xs,
-  },
-  revenueTotalSub: {
-    ...Typography.caption,
-    color: Colors.textSecondary,
-    marginTop: Spacing.xs,
-  },
-  revenueValue: {
-    ...Typography.cardTitle,
-    color: Colors.primary,
-  },
-  sheetContent: {
-    gap: Spacing.sm,
-  },
-  sheetRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  sheetLabel: {
-    ...Typography.body,
-    color: Colors.textSecondary,
-  },
-  sheetValue: {
-    ...Typography.body,
-    color: Colors.textPrimary,
-    fontWeight: "600",
-  },
-  sheetDivider: {
-    height: 1,
-    backgroundColor: Colors.border,
     marginVertical: Spacing.sm,
   },
-  roleRow: {
+  listContent: {
+    paddingBottom: Spacing.xxxl,
+  },
+  eventRow: {
     flexDirection: "row",
-    gap: Spacing.sm,
+    paddingVertical: Spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.borderSubtle,
+    gap: Spacing.md,
+  },
+  eventDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginTop: 5,
+  },
+  eventContent: {
+    flex: 1,
+  },
+  eventTopRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  eventType: {
+    ...Typography.cardTitle,
+    flex: 1,
+    textTransform: "capitalize",
+  },
+  eventTime: {
+    ...Typography.caption,
+    color: Colors.textMuted,
+  },
+  eventActor: {
+    ...Typography.body,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  eventAmount: {
+    ...Typography.cardTitle,
     marginTop: Spacing.xs,
   },
-  roleBtn: {
-    flex: 1,
+  metadataBox: {
+    backgroundColor: Colors.surfaceAlt,
+    borderRadius: Radius.md,
+    padding: Spacing.md,
+    marginTop: Spacing.sm,
+    gap: Spacing.xs,
   },
-  actionRow: {
+  metadataRow: {
     flexDirection: "row",
     gap: Spacing.sm,
   },
-  actionBtn: {
+  metadataKey: {
+    ...Typography.caption,
+    color: Colors.textMuted,
+    width: 120,
+  },
+  metadataValue: {
+    ...Typography.caption,
+    color: Colors.textPrimary,
     flex: 1,
+  },
+  loadMoreBtn: {
+    marginTop: Spacing.md,
+    marginBottom: Spacing.xxl,
   },
 });

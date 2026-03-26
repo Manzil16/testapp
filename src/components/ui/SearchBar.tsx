@@ -1,12 +1,12 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   StyleSheet,
-  Text,
   TextInput,
   TouchableOpacity,
   View,
   ViewStyle,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { Colors, Radius, Shadows, Spacing } from "@/src/features/shared/theme";
 
 interface SearchBarProps {
@@ -32,12 +32,11 @@ export function SearchBar({
   autoFocus,
   onSubmitEditing,
 }: SearchBarProps) {
+  const [focused, setFocused] = useState(false);
+
   return (
-    <View style={[styles.container, style]}>
-      {/* Search icon */}
-      <View style={styles.searchIconWrapper}>
-        <Text style={styles.searchIcon}>⌕</Text>
-      </View>
+    <View style={[styles.container, focused && styles.containerFocused, style]}>
+      <Ionicons name="search-outline" size={18} color={Colors.textMuted} style={styles.searchIcon} />
 
       <TextInput
         value={value}
@@ -50,22 +49,25 @@ export function SearchBar({
         onSubmitEditing={onSubmitEditing}
         autoCapitalize="none"
         autoCorrect={false}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
       />
 
-      {/* Clear button */}
       {value.length > 0 && (
         <TouchableOpacity onPress={() => onChangeText("")} style={styles.clearBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <Text style={styles.clearIcon}>✕</Text>
+          <Ionicons name="close-circle" size={16} color={Colors.textMuted} />
         </TouchableOpacity>
       )}
 
-      {/* Filter button */}
       {onFilterPress && (
         <TouchableOpacity onPress={onFilterPress} style={styles.filterBtn} activeOpacity={0.7}>
-          <Text style={styles.filterIcon}>⊞</Text>
+          <Ionicons name="options-outline" size={18} color={Colors.textSecondary} />
           {filterCount && filterCount > 0 ? (
             <View style={styles.badge}>
-              <Text style={styles.badgeText}>{filterCount}</Text>
+              <Ionicons name="ellipse" size={0} color="transparent" />
+              <View style={styles.badgeInner}>
+                <Ionicons name="ellipse" size={0} color="transparent" />
+              </View>
             </View>
           ) : null}
         </TouchableOpacity>
@@ -80,32 +82,28 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: Colors.surface,
     borderRadius: Radius.lg,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: Colors.border,
     paddingHorizontal: Spacing.md,
     height: 48,
-    ...Shadows.card,
   },
-  searchIconWrapper: {
-    marginRight: Spacing.sm,
+  containerFocused: {
+    borderColor: Colors.borderFocus,
+    ...Shadows.subtle,
   },
   searchIcon: {
-    fontSize: 18,
-    color: Colors.textMuted,
+    marginRight: Spacing.sm,
   },
   input: {
     flex: 1,
     fontSize: 14,
     color: Colors.textPrimary,
+    fontFamily: "DMSans_400Regular",
     paddingVertical: 0,
   },
   clearBtn: {
     padding: 4,
     marginLeft: Spacing.xs,
-  },
-  clearIcon: {
-    fontSize: 12,
-    color: Colors.textMuted,
   },
   filterBtn: {
     marginLeft: Spacing.sm,
@@ -116,25 +114,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  filterIcon: {
-    fontSize: 16,
-    color: Colors.textSecondary,
-  },
   badge: {
     position: "absolute",
     top: 2,
     right: 2,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
     backgroundColor: Colors.primary,
-    borderRadius: Radius.pill,
-    minWidth: 14,
-    height: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 2,
   },
-  badgeText: {
-    fontSize: 9,
-    fontWeight: "700",
-    color: Colors.textInverse,
+  badgeInner: {
+    display: "none",
   },
 });

@@ -1,10 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getChargerById } from "../features/chargers/charger.repository";
 import { listReviewsByCharger } from "../features/reviews/review.repository";
-import { createBookingRequest } from "../features/bookings/booking.repository";
+import { createBookingRequest, listBookingsByDriver } from "../features/bookings/booking.repository";
 import { getUserProfile } from "../features/users/user.repository";
 import type { Booking } from "../features/bookings/booking.types";
 import type { Charger } from "../features/chargers/charger.types";
+
+const ACTIVE_STATUSES = new Set(["requested", "approved", "in_progress"]);
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 
@@ -70,6 +72,18 @@ export function useChargerDetail(chargerId?: string, driverUserId?: string) {
     enabled: Boolean(hostId),
   });
 
+  // Fetch driver's active booking for this charger
+  const driverBookingsQuery = useQuery({
+    queryKey: ["bookings", "driver", driverUserId, chargerId],
+    queryFn: async () => {
+      const all = await listBookingsByDriver(driverUserId!);
+      return all.find(
+        (b) => b.chargerId === chargerId && ACTIVE_STATUSES.has(b.status)
+      ) ?? null;
+    },
+    enabled: Boolean(driverUserId) && Boolean(chargerId),
+  });
+
   const reviews = reviewsQuery.data ?? [];
   const totalReviews = reviews.length;
   const averageRating =
@@ -101,10 +115,12 @@ export function useChargerDetail(chargerId?: string, driverUserId?: string) {
     data: {
       charger: chargerQuery.data ?? null,
       hostName: hostQuery.data?.displayName ?? "Host",
+      hostStripeAccountId: hostQuery.data?.stripeAccountId ?? null,
       reviews,
       averageRating,
       totalReviews,
       availabilityStatus: "available" as Booking["status"] | "available",
+      activeBooking: driverBookingsQuery.data ?? null,
     },
     isLoading: chargerQuery.isLoading,
     error: chargerQuery.error?.message || null,

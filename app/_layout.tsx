@@ -1,9 +1,10 @@
 import "react-native-get-random-values";
 import * as SplashScreen from "expo-splash-screen";
+import * as Notifications from "expo-notifications";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useCallback, useEffect, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Platform, StyleSheet, Text, View } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -32,6 +33,15 @@ import { Colors } from "@/src/features/shared/theme";
 import { ThemeProvider } from "@/src/features/shared/ThemeProvider";
 import { NetworkBanner } from "@/src/components";
 import type { AppRole } from "@/src/features/users";
+
+// Configure notification display when app is in foreground
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
 
 SplashScreen.preventAutoHideAsync();
 
@@ -111,6 +121,28 @@ function AppRouteGate({ themeColors }: { themeColors: { background: string } }) 
   const authLoading = isBootstrapping || isProfileLoading;
   const [splashHidden, setSplashHidden] = useState(false);
   const [overlayVisible, setOverlayVisible] = useState(true);
+  const notificationResponseListener = useRef<Notifications.EventSubscription>();
+
+  // Handle notification taps — navigate to the relevant screen
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+
+    notificationResponseListener.current =
+      Notifications.addNotificationResponseReceivedListener((response) => {
+        const data = response.notification.request.content.data;
+        if (data?.screen === "booking-detail" && data?.bookingId) {
+          router.push(`/(app)/bookings/${data.bookingId}` as any);
+        } else if (data?.screen === "host-booking-detail" && data?.bookingId) {
+          router.push(`/(app)/host/booking/${data.bookingId}` as any);
+        }
+      });
+
+    return () => {
+      if (notificationResponseListener.current) {
+        Notifications.removeNotificationSubscription(notificationResponseListener.current);
+      }
+    };
+  }, [router]);
 
   useEffect(() => {
     if (!authLoading && !splashHidden) {

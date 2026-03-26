@@ -1,6 +1,7 @@
 import React from "react";
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View, ViewStyle } from "react-native";
+import { ScrollView, StyleSheet, Text, View, ViewStyle } from "react-native";
 import { Colors, Radius, Spacing } from "@/src/features/shared/theme";
+import { PressableScale } from "./PressableScale";
 
 interface FilterChipProps {
   label: string;
@@ -12,9 +13,8 @@ interface FilterChipProps {
 
 export function FilterChip({ label, active = false, onPress, icon, style }: FilterChipProps) {
   return (
-    <TouchableOpacity
+    <PressableScale
       onPress={onPress}
-      activeOpacity={0.7}
       style={[
         styles.chip,
         active ? styles.chipActive : styles.chipInactive,
@@ -25,11 +25,10 @@ export function FilterChip({ label, active = false, onPress, icon, style }: Filt
       <Text style={[styles.label, active ? styles.labelActive : styles.labelInactive]}>
         {label}
       </Text>
-    </TouchableOpacity>
+    </PressableScale>
   );
 }
 
-// Convenience: horizontal scrollable row of FilterChips
 interface FilterChipRowProps {
   chips: { id: string; label: string; icon?: React.ReactNode }[];
   activeId: string | null;
@@ -62,8 +61,9 @@ const styles = StyleSheet.create({
   chip: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    justifyContent: "center",
+    paddingHorizontal: 16,
+    height: 36,
     borderRadius: Radius.pill,
     borderWidth: 1.5,
   },
@@ -72,7 +72,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.primary,
   },
   chipInactive: {
-    backgroundColor: Colors.surface,
+    backgroundColor: Colors.surfaceAlt,
     borderColor: Colors.border,
   },
   icon: {
@@ -81,6 +81,7 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 13,
     fontWeight: "600",
+    fontFamily: "DMSans_600SemiBold",
   },
   labelActive: {
     color: Colors.textInverse,
@@ -92,7 +93,5 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.sm,
     gap: Spacing.sm,
   },
-  rowChip: {
-    // handled by gap in row
-  },
+  rowChip: {},
 });

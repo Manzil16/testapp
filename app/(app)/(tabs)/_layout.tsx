@@ -20,17 +20,18 @@ const sharedOptions = {
   tabBarActiveTintColor: Colors.accent,
   tabBarInactiveTintColor: Colors.textMuted,
   tabBarLabelStyle: {
-    ...Typography.caption,
+    fontSize: 10,
     fontWeight: "600" as const,
+    fontFamily: "DMSans_600SemiBold",
   },
   tabBarStyle: {
-    height: 64,
+    height: 68,
     paddingTop: 8,
-    paddingBottom: 8,
-    borderTopWidth: 0,
+    paddingBottom: 10,
+    borderTopWidth: 0.5,
+    borderTopColor: Colors.borderLight,
     backgroundColor: Colors.surface,
-    borderTopColor: Colors.border,
-    ...Shadows.modal,
+    ...Shadows.sticky,
   },
 };
 

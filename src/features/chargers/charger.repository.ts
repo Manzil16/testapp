@@ -123,14 +123,32 @@ export async function listChargersByHost(hostUserId: string): Promise<Charger[]>
   return (data as Record<string, unknown>[]).map(mapRow);
 }
 
+export interface VerificationRubric {
+  photoQuality: number;      // 0, 10, or 20
+  plugVerified: 0 | 20;      // confirmed plug type
+  locationAccuracy: number;  // 0, 10, or 20
+  hostResponse: number;      // 0-20 auto-calculated
+  adminReview: 0 | 20;       // admin discretion
+}
+
 export async function updateChargerStatus(
   chargerId: string,
   status: ChargerStatus,
-  verificationScore: number
+  verificationScore: number,
+  rubric?: VerificationRubric
 ): Promise<void> {
+  const update: Record<string, unknown> = { status, verification_score: verificationScore };
+  if (rubric) {
+    update.rubric_photo_quality = rubric.photoQuality;
+    update.rubric_plug_verified = rubric.plugVerified;
+    update.rubric_location_accuracy = rubric.locationAccuracy;
+    update.rubric_host_response = rubric.hostResponse;
+    update.rubric_admin_review = rubric.adminReview;
+  }
+
   const { error } = await supabase
     .from("chargers")
-    .update({ status, verification_score: verificationScore })
+    .update(update)
     .eq("id", chargerId);
   if (error) throw error;
 }
@@ -138,4 +156,23 @@ export async function updateChargerStatus(
 export async function deleteCharger(chargerId: string): Promise<void> {
   const { error } = await supabase.from("chargers").delete().eq("id", chargerId);
   if (error) throw error;
+}
+
+export interface MapBounds {
+  south: number;
+  north: number;
+  west: number;
+  east: number;
+}
+
+export async function listChargersInBounds(bounds: MapBounds, maxResults = 200): Promise<Charger[]> {
+  const { data, error } = await supabase.rpc("chargers_in_bounds", {
+    min_lat: bounds.south,
+    max_lat: bounds.north,
+    min_lng: bounds.west,
+    max_lng: bounds.east,
+    max_results: maxResults,
+  });
+  if (error) throw error;
+  return (data as Record<string, unknown>[]).map(mapRow);
 }

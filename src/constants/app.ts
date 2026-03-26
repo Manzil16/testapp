@@ -3,8 +3,9 @@
 // Only true UI constants (labels, enums) should remain in component files.
 
 export const AppConfig = {
-  // Platform fee percentage (0-100) applied to each booking
-  PLATFORM_FEE_PERCENT: 20,
+  // Platform fee split — guest pays GUEST_FEE on top, host pays HOST_FEE from payout
+  PLATFORM_FEE_PERCENT: 10, // guest-side fee shown to driver (was 20% combined)
+  HOST_FEE_PERCENT: 10,     // host-side fee deducted from payout
 
   // Booking auto-expiry after this duration (ms) if host doesn't respond
   BOOKING_EXPIRY_MS: 24 * 60 * 60 * 1000,
@@ -22,7 +23,8 @@ export const AppConfig = {
     powerKw: 22,
     pricePerKwh: 0.55,
     minPowerKw: 7,
-    minPricePerKwh: 0.2,
+    minPricePerKwh: 0.35,
+    maxPricePerKwh: 2.5,
     maxPhotos: 6,
     defaultStartTime: "06:00",
     defaultEndTime: "22:00",
@@ -73,6 +75,7 @@ export const AppConfig = {
   PAGE_SIZE: 10,
   ADMIN_QUERY_LIMIT: 250,
   ADMIN_MAX_PROFILES: 300,
+  ADMIN_PAGE_SIZE: 50,
 
   // Polling intervals (ms)
   NOTIFICATION_REFETCH_INTERVAL: 30_000,
@@ -95,7 +98,7 @@ export const AppConfig = {
   // Pricing assistant
   PRICING: {
     // Market bands by charger speed tier (AUD/kWh)
-    SLOW: { min: 0.25, suggested: 0.35, max: 0.50 },    // <= 7 kW
+    SLOW: { min: 0.35, suggested: 0.40, max: 0.50 },    // <= 7 kW
     STANDARD: { min: 0.35, suggested: 0.50, max: 0.65 }, // 7-22 kW
     FAST: { min: 0.45, suggested: 0.58, max: 0.75 },     // 22-50 kW
     ULTRA: { min: 0.55, suggested: 0.65, max: 0.85 },    // 50+ kW

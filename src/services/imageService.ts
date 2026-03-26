@@ -6,8 +6,8 @@ import { supabase } from "../lib/supabase";
 import { v4 as uuidv4 } from "uuid";
 
 const CHARGER_BUCKET = "charger-images";
-const MAX_WIDTH = 1200;
-const QUALITY = 0.8;
+const MAX_WIDTH = 1920;
+const QUALITY = 0.92;
 
 /**
  * Ensures a value is a full public URL. If it's a storage key/path,
@@ -22,6 +22,43 @@ export function ensurePublicUrl(urlOrPath: string, bucket = CHARGER_BUCKET): str
   // It's a relative storage key — construct the full URL
   const { data } = supabase.storage.from(bucket).getPublicUrl(urlOrPath);
   return data.publicUrl;
+}
+
+/**
+ * Get a thumbnail URL (200x150, 70% quality) for list views.
+ * Uses Supabase Storage's built-in image transformation API.
+ */
+export function getThumbnailUrl(urlOrPath: string, bucket = CHARGER_BUCKET): string {
+  if (!urlOrPath) return "";
+  const path = urlOrPath.startsWith("http") ? extractStoragePath(urlOrPath) : urlOrPath;
+  if (!path) return ensurePublicUrl(urlOrPath, bucket);
+
+  const { data } = supabase.storage.from(bucket).getPublicUrl(path, {
+    transform: { width: 200, height: 150, resize: "cover", quality: 70 },
+  });
+  return data.publicUrl;
+}
+
+/**
+ * Get a detail-view URL (800px wide, 85% quality) for charger detail screens.
+ */
+export function getDetailImageUrl(urlOrPath: string, bucket = CHARGER_BUCKET): string {
+  if (!urlOrPath) return "";
+  const path = urlOrPath.startsWith("http") ? extractStoragePath(urlOrPath) : urlOrPath;
+  if (!path) return ensurePublicUrl(urlOrPath, bucket);
+
+  const { data } = supabase.storage.from(bucket).getPublicUrl(path, {
+    transform: { width: 1200, quality: 95 },
+  });
+  return data.publicUrl;
+}
+
+/**
+ * Extract the storage path from a full Supabase Storage URL.
+ */
+function extractStoragePath(url: string): string | null {
+  const match = url.match(/charger-images\/(.+)/);
+  return match ? match[1] : null;
 }
 
 // ── Permission Helpers ──
@@ -172,24 +209,50 @@ async function uploadToStorage(
 
 export async function pickAndUploadChargerImage(
   chargerId: string,
-  onProgress?: (progress: number) => void
+  onProgress?: (progress: number) => void,
+  hostId?: string
 ): Promise<string> {
   const asset = await pickImage({ aspect: [16, 9] });
   if (!asset) throw new Error("Image selection cancelled");
 
   const fileName = `${chargerId}/${uuidv4()}.jpg`;
-  return uploadToStorage(CHARGER_BUCKET, fileName, asset.uri, onProgress);
+  const url = await uploadToStorage(CHARGER_BUCKET, fileName, asset.uri, onProgress);
+
+  if (hostId) {
+    logImageUploadEvent({
+      chargerId,
+      hostId,
+      imageUrl: url,
+      imageSizeBytes: asset.fileSize,
+      dimensions: asset.width && asset.height ? `${asset.width}x${asset.height}` : undefined,
+    });
+  }
+
+  return url;
 }
 
 export async function captureAndUploadChargerImage(
   chargerId: string,
-  onProgress?: (progress: number) => void
+  onProgress?: (progress: number) => void,
+  hostId?: string
 ): Promise<string> {
   const asset = await captureImage({ aspect: [16, 9] });
   if (!asset) throw new Error("Camera capture cancelled");
 
   const fileName = `${chargerId}/${uuidv4()}.jpg`;
-  return uploadToStorage(CHARGER_BUCKET, fileName, asset.uri, onProgress);
+  const url = await uploadToStorage(CHARGER_BUCKET, fileName, asset.uri, onProgress);
+
+  if (hostId) {
+    logImageUploadEvent({
+      chargerId,
+      hostId,
+      imageUrl: url,
+      imageSizeBytes: asset.fileSize,
+      dimensions: asset.width && asset.height ? `${asset.width}x${asset.height}` : undefined,
+    });
+  }
+
+  return url;
 }
 
 export async function uploadAvatarImage(
@@ -247,6 +310,38 @@ export async function uploadAvatarImage(
   const { data } = supabase.storage.from(CHARGER_BUCKET).getPublicUrl(fileName);
   onProgress?.(1);
   return data.publicUrl;
+}
+
+/**
+ * Log an image upload event to platform_events.
+ * Called after every successful charger image upload.
+ */
+export async function logImageUploadEvent(params: {
+  chargerId: string;
+  hostId: string;
+  imageUrl: string;
+  imageSizeBytes?: number;
+  dimensions?: string;
+}): Promise<void> {
+  try {
+    await supabase.from("platform_events").insert({
+      event_type: "image.uploaded",
+      actor_user_id: params.hostId,
+      actor_role: "host",
+      target_type: "image",
+      target_id: params.chargerId,
+      image_url: params.imageUrl,
+      metadata: {
+        charger_id: params.chargerId,
+        host_id: params.hostId,
+        image_url: params.imageUrl,
+        image_size_bytes: params.imageSizeBytes ?? 0,
+        dimensions: params.dimensions ?? "unknown",
+      },
+    });
+  } catch {
+    // Silently fail — logging should never block uploads
+  }
 }
 
 export async function deleteChargerImage(imageUrl: string): Promise<void> {

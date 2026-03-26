@@ -6,10 +6,10 @@ export type InfoPillVariant = "default" | "success" | "warning" | "error" | "inf
 
 const variantMap: Record<InfoPillVariant, { bg: string; text: string; border: string }> = {
   default: { bg: Colors.surfaceAlt, text: Colors.textSecondary, border: Colors.border },
-  primary: { bg: Colors.primaryLight, text: Colors.primaryDark, border: Colors.primaryLight },
-  success: { bg: Colors.successLight, text: Colors.success, border: Colors.successLight },
-  warning: { bg: Colors.warningLight, text: Colors.warning, border: Colors.warningLight },
-  error: { bg: Colors.errorLight, text: Colors.error, border: Colors.errorLight },
+  primary: { bg: Colors.primaryLight, text: "#00897B", border: Colors.primaryLight },
+  success: { bg: "#D1FAE5", text: "#059669", border: "#D1FAE5" },
+  warning: { bg: "#FEF3C7", text: "#D97706", border: "#FEF3C7" },
+  error: { bg: "#FEE2E2", text: "#DC2626", border: "#FEE2E2" },
   info: { bg: Colors.infoLight, text: Colors.info, border: Colors.infoLight },
 };
 
@@ -51,8 +51,10 @@ const styles = StyleSheet.create({
     marginRight: 4,
   },
   label: {
-    fontSize: 11,
-    fontWeight: "600",
-    letterSpacing: 0.2,
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 0.3,
+    fontFamily: "DMSans_700Bold",
+    textTransform: "uppercase",
   },
 });

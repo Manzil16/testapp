@@ -1,7 +1,26 @@
 import React from "react";
 import { StyleSheet, Text, View, ViewStyle } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { Colors, Radius, Shadows, Spacing, Typography } from "@/src/features/shared/theme";
-import { PrimaryCTA } from "./PrimaryCTA";
+import { SecondaryButton } from "./SecondaryButton";
+
+const ICON_MAP: Record<string, keyof typeof Ionicons.glyphMap> = {
+  "⚡": "flash",
+  "🗺️": "map",
+  "🔍": "search",
+  "⭐": "star",
+  "⚠️": "alert-circle",
+  "📅": "calendar",
+  "🧾": "receipt",
+  "🔋": "battery-half",
+  "📦": "cube",
+  "👤": "person",
+  "🏠": "home",
+  "🛡️": "shield-checkmark",
+  "🔔": "notifications",
+  "📊": "bar-chart",
+  "✅": "checkmark-circle",
+};
 
 interface EmptyStateCardProps {
   icon: string;
@@ -20,13 +39,17 @@ export function EmptyStateCard({
   onAction,
   style,
 }: EmptyStateCardProps) {
+  const ioniconsName = ICON_MAP[icon] || "ellipse";
+
   return (
     <View style={[styles.card, style]}>
-      <Text style={styles.icon}>{icon}</Text>
+      <View style={styles.iconCircle}>
+        <Ionicons name={ioniconsName} size={28} color={Colors.primaryDark} />
+      </View>
       <Text style={styles.title}>{title}</Text>
       <Text style={styles.message}>{message}</Text>
       {actionLabel && onAction ? (
-        <PrimaryCTA
+        <SecondaryButton
           label={actionLabel}
           onPress={onAction}
           style={styles.action}
@@ -40,13 +63,20 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: Colors.surface,
     borderRadius: Radius.card,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
     padding: Spacing.xxxl,
     alignItems: "center",
     marginVertical: Spacing.xl,
     ...Shadows.card,
   },
-  icon: {
-    fontSize: 48,
+  iconCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: Colors.primaryLight,
+    alignItems: "center",
+    justifyContent: "center",
     marginBottom: Spacing.lg,
   },
   title: {
@@ -61,7 +91,6 @@ const styles = StyleSheet.create({
   },
   action: {
     marginTop: Spacing.xl,
-    paddingHorizontal: Spacing.xxxl,
     alignSelf: "stretch",
   },
 });

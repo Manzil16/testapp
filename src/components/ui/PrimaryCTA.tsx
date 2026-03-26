@@ -3,10 +3,11 @@ import {
   ActivityIndicator,
   StyleSheet,
   Text,
-  TouchableOpacity,
   ViewStyle,
 } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import { Colors, Radius, Shadows, Spacing, Typography } from "@/src/features/shared/theme";
+import { PressableScale } from "./PressableScale";
 
 interface PrimaryCTAProps {
   label: string;
@@ -27,41 +28,49 @@ export function PrimaryCTA({
   variant = "default",
 }: PrimaryCTAProps) {
   const isDisabled = disabled || loading;
-  const bgColor =
+
+  const gradientColors =
     variant === "danger"
-      ? Colors.error
+      ? (Colors.gradientDanger as unknown as [string, string])
       : isDisabled
-      ? Colors.border
-      : Colors.primary;
+      ? [Colors.border, Colors.border] as [string, string]
+      : (Colors.gradientAccent as unknown as [string, string]);
 
   return (
-    <TouchableOpacity
+    <PressableScale
       onPress={onPress}
       disabled={isDisabled}
-      activeOpacity={0.82}
-      style={[
-        styles.button,
-        { backgroundColor: bgColor },
-        !isDisabled && variant === "default" && Shadows.button,
-        style,
-      ]}
+      style={[isDisabled && styles.disabled, style]}
     >
-      {loading ? (
-        <ActivityIndicator size="small" color={Colors.textInverse} />
-      ) : (
-        <Text style={[styles.label, isDisabled && styles.labelDisabled]}>{label}</Text>
-      )}
-    </TouchableOpacity>
+      <LinearGradient
+        colors={gradientColors}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={[
+          styles.button,
+          !isDisabled && variant === "default" && Shadows.button,
+        ]}
+      >
+        {loading ? (
+          <ActivityIndicator size="small" color={Colors.textInverse} />
+        ) : (
+          <Text style={[styles.label, isDisabled && styles.labelDisabled]}>{label}</Text>
+        )}
+      </LinearGradient>
+    </PressableScale>
   );
 }
 
 const styles = StyleSheet.create({
   button: {
-    height: 52,
+    height: 54,
     borderRadius: Radius.lg,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: Spacing.xl,
+  },
+  disabled: {
+    opacity: 0.7,
   },
   label: {
     ...Typography.cardTitle,

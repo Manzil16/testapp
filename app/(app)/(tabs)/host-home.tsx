@@ -50,7 +50,7 @@ export default function HostHomeTabScreen() {
           <FlatList
             data={data.chargers}
             keyExtractor={(item) => item.id}
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#00BFA5" />}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.content}
             ListHeaderComponent={
