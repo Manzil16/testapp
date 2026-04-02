@@ -34,7 +34,11 @@ serve(async (req) => {
     }
 
     // Capture the authorized payment
-    const paymentIntent = await stripe.paymentIntents.capture(paymentIntentId);
+    const paymentIntent = await stripe.paymentIntents.capture(
+      paymentIntentId,
+      {},
+      { idempotencyKey: `payment_capture_${paymentIntentId}` }
+    );
 
     // Update booking payment status
     const supabase = createClient(supabaseUrl, supabaseServiceKey);

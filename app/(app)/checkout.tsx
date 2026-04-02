@@ -23,6 +23,8 @@ import {
 } from "@/src/components";
 import { AppConfig } from "@/src/constants/app";
 import { createPaymentIntent } from "@/src/services/stripeService";
+import { createBookingRequest, updateBookingStatus } from "@/src/features/bookings/booking.repository";
+import { useAuth } from "@/src/features/auth/auth-context";
 
 /**
  * Checkout screen — authorizes payment via Stripe.
@@ -36,9 +38,13 @@ import { createPaymentIntent } from "@/src/services/stripeService";
  */
 export default function CheckoutScreen() {
   const router = useRouter();
+  const { user } = useAuth();
 
   const params = useLocalSearchParams<{
-    bookingId: string;
+    chargerId: string;
+    hostUserId: string;
+    startTimeIso: string;
+    endTimeIso: string;
     chargerName: string;
     totalAmount: string;
     platformFee: string;
@@ -56,46 +62,69 @@ export default function CheckoutScreen() {
   const [processing, setProcessing] = useState(false);
 
   const handleAuthorizePayment = useCallback(async () => {
-    if (!params.bookingId || !totalAmount) return;
+    if (!user || !params.chargerId || !totalAmount) return;
 
     setProcessing(true);
+    let createdBookingId: string | null = null;
     try {
-      // Create the PaymentIntent server-side (capture_method: manual)
+      // Step 1: Create the booking record — only now, when the user actively authorises
+      const result = await createBookingRequest({
+        chargerId: params.chargerId,
+        driverUserId: user.id,
+        hostUserId: params.hostUserId,
+        startTimeIso: params.startTimeIso,
+        endTimeIso: params.endTimeIso,
+        estimatedKWh,
+      });
+
+      if ("conflict" in result) {
+        Alert.alert("Slot taken", "This time slot was just booked by someone else. Please choose a different time.");
+        return;
+      }
+      if ("suspended" in result) {
+        Alert.alert("Account suspended", "Your account has been suspended. Please contact support.");
+        return;
+      }
+      if ("unverified" in result) {
+        Alert.alert("Verification required", "Please complete your account verification before booking.");
+        return;
+      }
+      if ("error" in result) {
+        Alert.alert("Booking failed", result.error);
+        return;
+      }
+
+      createdBookingId = result.bookingId;
+
+      // Step 2: Authorise the payment hold via Stripe
+      // In production: present PaymentSheet from @stripe/stripe-react-native here.
       const amountCents = Math.round(totalAmount * 100);
-      console.log("[checkout] calling createPaymentIntent", { bookingId: params.bookingId, amountCents, hostStripeAccountId: params.hostStripeAccountId });
       await createPaymentIntent({
-        bookingId: params.bookingId,
+        bookingId: createdBookingId,
         amount: amountCents,
         hostStripeAccountId: params.hostStripeAccountId || "",
       });
 
-      // In production, this would present PaymentSheet from @stripe/stripe-react-native
-      // for PCI-compliant card collection. For demo/Expo Go, the PI is created and we
-      // navigate to success. The real card confirmation would happen via:
-      //
-      //   const { initPaymentSheet, presentPaymentSheet } = useStripe();
-      //   await initPaymentSheet({ paymentIntentClientSecret: result.clientSecret, ... });
-      //   const { error } = await presentPaymentSheet();
-      //
-
-      // Navigate to confirmation
       router.replace({
         pathname: "/(app)/payment-success" as any,
         params: {
-          bookingId: params.bookingId,
+          bookingId: createdBookingId,
           chargerName: params.chargerName,
           totalAmount: String(totalAmount),
         },
       });
     } catch (err) {
+      // If the booking was created but payment failed, cancel it immediately so the
+      // slot is freed and no orphaned record blocks future bookings.
+      if (createdBookingId) {
+        void updateBookingStatus(createdBookingId, "cancelled");
+      }
       const message = err instanceof Error ? err.message : "Payment authorization failed";
-      console.error("[checkout] payment error:", err);
-      console.error("[checkout] error message:", message);
       Alert.alert("Payment Error", message);
     } finally {
       setProcessing(false);
     }
-  }, [params.bookingId, params.chargerName, params.hostStripeAccountId, totalAmount, router]);
+  }, [params, totalAmount, estimatedKWh, user, router]);
 
   return (
     <SafeAreaView style={styles.safe} edges={["bottom"]}>

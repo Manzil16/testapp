@@ -130,6 +130,15 @@ export default function HostHomeTabScreen() {
                     </View>
                     <Text style={styles.actionLabel}>Chargers</Text>
                   </PressableScale>
+                  <PressableScale
+                    onPress={() => router.push("/(app)/host/analytics" as any)}
+                    style={styles.actionCard}
+                  >
+                    <View style={[styles.actionIconCircle, { backgroundColor: Colors.successLight }]}>
+                      <Ionicons name="bar-chart" size={20} color={Colors.success} />
+                    </View>
+                    <Text style={styles.actionLabel}>Analytics</Text>
+                  </PressableScale>
                 </Animated.View>
 
                 {/* Pending Bookings */}

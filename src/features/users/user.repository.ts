@@ -7,9 +7,10 @@ function mapRow(row: Record<string, unknown>): UserProfile {
     email: row.email as string,
     displayName: row.display_name as string,
     role: row.role as AppRole,
-    isDriver: row.is_driver as boolean ?? true,
-    isHost: row.is_host as boolean ?? false,
-    isAdmin: row.is_admin as boolean ?? false,
+    isDriver: (row.is_driver as boolean) ?? true,
+    isHost: (row.is_host as boolean) ?? false,
+    isAdmin: (row.is_admin as boolean) ?? false,
+    isSuspended: (row.is_suspended as boolean) ?? false,
     phone: (row.phone as string) || undefined,
     avatarUrl: (row.avatar_url as string) || undefined,
     preferredReservePercent: row.preferred_reserve_percent as number,
@@ -110,5 +111,13 @@ export async function listAllProfiles(options?: {
 
 export async function deleteProfile(userId: string): Promise<void> {
   const { error } = await supabase.from("profiles").delete().eq("id", userId);
+  if (error) throw error;
+}
+
+export async function suspendUser(userId: string, suspended: boolean): Promise<void> {
+  const { error } = await supabase
+    .from("profiles")
+    .update({ is_suspended: suspended })
+    .eq("id", userId);
   if (error) throw error;
 }

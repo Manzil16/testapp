@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   FlatList,
   Pressable,
@@ -146,8 +146,8 @@ export default function AdminOverviewScreen() {
     []
   );
 
-  // Effect-like: update filter when debounced search changes
-  useMemo(() => {
+  // Update filter when debounced search changes
+  useEffect(() => {
     setFilter({ search: debouncedSearch || undefined });
   }, [debouncedSearch, setFilter]);
 

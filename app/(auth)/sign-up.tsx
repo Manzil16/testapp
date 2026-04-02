@@ -2,7 +2,7 @@ import Constants from "expo-constants";
 import * as Google from "expo-auth-session/providers/google";
 import { Link } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Alert,
   KeyboardAvoidingView,
@@ -24,9 +24,71 @@ import {
   GOOGLE_ANDROID_CLIENT_ID,
   GOOGLE_IOS_CLIENT_ID,
   GOOGLE_WEB_CLIENT_ID,
+  validateGoogleAuthConfig,
 } from "@/src/features/auth/google-auth.config";
 
 WebBrowser.maybeCompleteAuthSession();
+
+// ─── Password requirements ────────────────────────────────────────────────────
+interface PasswordReqs {
+  length: boolean;
+  uppercase: boolean;
+  lowercase: boolean;
+  digit: boolean;
+}
+
+function checkPasswordReqs(pw: string): PasswordReqs {
+  return {
+    length: pw.length >= 12,
+    uppercase: /[A-Z]/.test(pw),
+    lowercase: /[a-z]/.test(pw),
+    digit: /[0-9]/.test(pw),
+  };
+}
+
+function PasswordRequirements({ reqs, visible }: { reqs: PasswordReqs; visible: boolean }) {
+  if (!visible) return null;
+  const items: { key: keyof PasswordReqs; label: string }[] = [
+    { key: "length", label: "At least 12 characters" },
+    { key: "uppercase", label: "One uppercase letter (A–Z)" },
+    { key: "lowercase", label: "One lowercase letter (a–z)" },
+    { key: "digit", label: "One number (0–9)" },
+  ];
+  return (
+    <View style={reqStyles.container}>
+      {items.map(({ key, label }) => (
+        <View key={key} style={reqStyles.row}>
+          <Ionicons
+            name={reqs[key] ? "checkmark-circle" : "ellipse-outline"}
+            size={14}
+            color={reqs[key] ? Colors.success : Colors.textMuted}
+          />
+          <Text style={[reqStyles.text, reqs[key] && reqStyles.textMet]}>{label}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+const reqStyles = StyleSheet.create({
+  container: {
+    marginTop: 6,
+    marginBottom: 4,
+    gap: 4,
+  },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  text: {
+    fontSize: 12,
+    color: Colors.textMuted,
+  },
+  textMet: {
+    color: Colors.success,
+  },
+});
 
 interface RoleOption {
   id: AppRole;
@@ -91,6 +153,9 @@ export default function SignUpScreen() {
   const [passwordError, setPasswordError] = useState("");
   const [confirmError, setConfirmError] = useState("");
 
+  const passwordReqs = useMemo(() => checkPasswordReqs(password), [password]);
+  const passwordStrong = Object.values(passwordReqs).every(Boolean);
+
   const isExpoGo = Constants.appOwnership === "expo";
 
   const [googleRequest, googleResponse, googlePromptAsync] = Google.useAuthRequest({
@@ -102,6 +167,7 @@ export default function SignUpScreen() {
   const handleGoogleCredential = useCallback(async (idToken: string) => {
     try {
       setGoogleLoading(true);
+      validateGoogleAuthConfig();
       await loginWithGoogle(idToken);
     } catch (error) {
       const msg = error instanceof Error ? error.message : "Google sign-in failed.";
@@ -143,8 +209,8 @@ export default function SignUpScreen() {
     if (!password) {
       setPasswordError("Password is required.");
       valid = false;
-    } else if (password.length < 6) {
-      setPasswordError("Password must be at least 6 characters.");
+    } else if (!passwordStrong) {
+      setPasswordError("Password does not meet all requirements below.");
       valid = false;
     }
 
@@ -298,15 +364,15 @@ export default function SignUpScreen() {
               onChangeText={(t) => { setPassword(t); setPasswordError(""); }}
               secureTextEntry={!showPassword}
               autoCapitalize="none"
-              placeholder="Minimum 6 characters"
+              placeholder="Minimum 12 characters"
               error={passwordError}
               leftIcon={<Ionicons name="lock-closed-outline" size={16} color={Colors.textMuted} />}
               rightIcon={
                 <Ionicons name={showPassword ? "eye-off-outline" : "eye-outline"} size={16} color={Colors.textMuted} />
               }
               onRightIconPress={() => setShowPassword((v) => !v)}
-              hint={!passwordError ? "Must be at least 6 characters" : undefined}
             />
+            <PasswordRequirements reqs={passwordReqs} visible={password.length > 0} />
 
             <InputField
               label="Confirm Password"

@@ -77,10 +77,13 @@ serve(async (req) => {
     }
 
     // Issue the refund via Stripe
-    await stripe.refunds.create({
-      payment_intent: booking.stripe_payment_intent_id,
-      amount: refundAmount,
-    });
+    await stripe.refunds.create(
+      {
+        payment_intent: booking.stripe_payment_intent_id,
+        amount: refundAmount,
+      },
+      { idempotencyKey: `refund_${bookingId}` }
+    );
 
     // Update booking status
     await supabase

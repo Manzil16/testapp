@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { Linking, Platform, StyleSheet, Text, View } from "react-native";
+import { Alert, Linking, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -44,6 +44,8 @@ export default function BookingDetailScreen() {
   const insets = useSafeAreaInsets();
   const { booking, charger, isLoading, refetch } = useBookingDetail(bookingId!);
   const [actionLoading, setActionLoading] = useState(false);
+  const [showKwhModal, setShowKwhModal] = useState(false);
+  const [kwhEntry, setKwhEntry] = useState("");
 
   const config = STATUS_CONFIG[booking?.status ?? "requested"] ?? STATUS_CONFIG.requested;
 
@@ -70,16 +72,44 @@ export default function BookingDetailScreen() {
     }
   }, [booking, hoursUntilStart, refetch]);
 
-  const handleEndSession = useCallback(async () => {
+  const performEndSession = useCallback(async (kwh: number) => {
     if (!booking) return;
     setActionLoading(true);
     try {
-      await endSession(booking.id, booking.estimatedKWh);
+      await endSession(booking.id, kwh);
       refetch();
     } finally {
       setActionLoading(false);
     }
   }, [booking, refetch]);
+
+  const handleEndSession = useCallback(() => {
+    if (!booking) return;
+    Alert.alert(
+      "End Session Early?",
+      "This will finalize your charging session and process payment based on actual usage. This cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "End Session",
+          onPress: () => {
+            if (booking.actualKWh != null) {
+              void performEndSession(booking.actualKWh);
+            } else {
+              setKwhEntry(String(booking.estimatedKWh));
+              setShowKwhModal(true);
+            }
+          },
+        },
+      ]
+    );
+  }, [booking, performEndSession]);
+
+  const confirmKwhAndEnd = useCallback(async () => {
+    setShowKwhModal(false);
+    const kwh = Math.max(0, Number(kwhEntry) || (booking?.estimatedKWh ?? 0));
+    await performEndSession(kwh);
+  }, [kwhEntry, booking, performEndSession]);
 
   const handleDirections = useCallback(() => {
     if (!charger) return;
@@ -312,6 +342,39 @@ export default function BookingDetailScreen() {
         )}
       </ScreenContainer>
 
+      {/* kWh entry modal — shown when actual kWh is unknown at session end */}
+      <Modal visible={showKwhModal} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalBox}>
+            <Text style={styles.modalTitle}>Enter kWh Used</Text>
+            <Text style={styles.modalBody}>
+              Enter the actual kWh delivered. The estimated value is pre-filled as a fallback.
+            </Text>
+            <TextInput
+              style={styles.kwhInput}
+              value={kwhEntry}
+              onChangeText={setKwhEntry}
+              keyboardType="decimal-pad"
+              selectTextOnFocus
+            />
+            <View style={styles.modalActions}>
+              <Pressable
+                style={styles.modalCancelBtn}
+                onPress={() => setShowKwhModal(false)}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={styles.modalConfirmBtn}
+                onPress={confirmKwhAndEnd}
+              >
+                <Text style={styles.modalConfirmText}>Confirm & End</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* Bottom action bar */}
       <View style={[styles.actionBar, { paddingBottom: insets.bottom + Spacing.md }]}>
         {booking.status === "requested" && (
@@ -466,5 +529,74 @@ const styles = StyleSheet.create({
   },
   actionHalf: {
     flex: 1,
+  },
+  // kWh entry modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: Spacing.xl,
+  },
+  modalBox: {
+    width: "100%",
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.xl,
+    padding: Spacing.xl,
+    ...Shadows.card,
+  },
+  modalTitle: {
+    fontSize: 17,
+    fontWeight: "700",
+    color: Colors.textPrimary,
+    marginBottom: Spacing.sm,
+    fontFamily: "Syne_700Bold",
+  },
+  modalBody: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    marginBottom: Spacing.lg,
+    lineHeight: 20,
+  },
+  kwhInput: {
+    backgroundColor: Colors.surfaceAlt,
+    borderRadius: Radius.input,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    fontSize: 18,
+    fontWeight: "600",
+    color: Colors.textPrimary,
+    textAlign: "center",
+    marginBottom: Spacing.lg,
+  },
+  modalActions: {
+    flexDirection: "row",
+    gap: Spacing.md,
+  },
+  modalCancelBtn: {
+    flex: 1,
+    alignItems: "center",
+    paddingVertical: Spacing.md,
+    borderRadius: Radius.lg,
+    backgroundColor: Colors.surfaceAlt,
+  },
+  modalCancelText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: Colors.textSecondary,
+  },
+  modalConfirmBtn: {
+    flex: 1,
+    alignItems: "center",
+    paddingVertical: Spacing.md,
+    borderRadius: Radius.lg,
+    backgroundColor: Colors.accent,
+  },
+  modalConfirmText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: Colors.textInverse,
   },
 });

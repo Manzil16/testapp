@@ -41,7 +41,6 @@ import { useBadgeCounts, useChargerDetail, useWishlist } from "@/src/hooks";
 import { useChargerStats } from "@/src/hooks/useChargerStats";
 import { useQuery } from "@tanstack/react-query";
 import { listVehiclesByUser } from "@/src/features/vehicles/vehicle.repository";
-import { createPaymentIntent } from "@/src/services/stripeService";
 import { useUserLocation, getDistanceKm, formatDistance } from "@/src/hooks/useUserLocation";
 import { useThemeColors } from "@/src/hooks/useThemeColors";
 import { getDetailImageUrl } from "@/src/services/imageService";
@@ -60,7 +59,7 @@ export default function ChargerDetailRoute() {
 
   const userId = useMemo(() => user?.id, [user?.id]);
 
-  const { data, isLoading, error, requestBooking, refresh } = useChargerDetail(chargerId, userId);
+  const { data, isLoading, error, refresh } = useChargerDetail(chargerId, userId);
   const { data: chargerStats } = useChargerStats(chargerId);
 
   // Fetch host profile for host section
@@ -82,8 +81,6 @@ export default function ChargerDetailRoute() {
   const [startDate, setStartDate] = useState(() => new Date(Date.now() + AppConfig.BOOKING_DEFAULTS.defaultDurationHours * 3600000));
   const [endDate, setEndDate] = useState(() => new Date(Date.now() + 2 * AppConfig.BOOKING_DEFAULTS.defaultDurationHours * 3600000));
   const [estimatedKWh, setEstimatedKWh] = useState<number>(AppConfig.BOOKING_DEFAULTS.defaultEstimatedKwh);
-  const [submitting, setSubmitting] = useState(false);
-
   const charger = data.charger;
   const activeBooking = data.activeBooking;
   const bookingValidationError = getBookingAvailabilityError(charger, startDate, endDate);
@@ -110,43 +107,33 @@ export default function ChargerDetailRoute() {
     });
   };
 
-  const submitBooking = async () => {
+  const submitBooking = () => {
     if (!charger) return;
     if (bookingValidationError) {
       Alert.alert("Booking", bookingValidationError);
       return;
     }
-    try {
-      setSubmitting(true);
-      const bookingId = await requestBooking({
-        start: startDate,
-        end: endDate,
-        estimatedKWh,
-      });
 
-      const subtotal = charger.pricingPerKwh * estimatedKWh;
-      const platformFee = subtotal * (AppConfig.PLATFORM_FEE_PERCENT / 100);
-      const totalAmount = subtotal + platformFee;
+    const subtotal = charger.pricingPerKwh * estimatedKWh;
+    const platformFee = subtotal * (AppConfig.PLATFORM_FEE_PERCENT / 100);
+    const totalAmount = subtotal + platformFee;
 
-      // Navigate to checkout for payment
-      router.push({
-        pathname: "/(app)/checkout" as any,
-        params: {
-          bookingId,
-          chargerName: charger.name,
-          totalAmount: String(totalAmount),
-          platformFee: String(platformFee),
-          estimatedKWh: String(estimatedKWh),
-          pricePerKwh: String(charger.pricingPerKwh),
-          hostStripeAccountId: data.hostStripeAccountId ?? "",
-        },
-      });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Unable to request booking.";
-      Alert.alert("Booking failed", message);
-    } finally {
-      setSubmitting(false);
-    }
+    // Navigate to checkout — booking record is created there, after payment is authorised
+    router.push({
+      pathname: "/(app)/checkout" as any,
+      params: {
+        chargerId,
+        hostUserId: charger.hostUserId,
+        startTimeIso: startDate.toISOString(),
+        endTimeIso: endDate.toISOString(),
+        estimatedKWh: String(estimatedKWh),
+        chargerName: charger.name,
+        totalAmount: String(totalAmount),
+        platformFee: String(platformFee),
+        pricePerKwh: String(charger.pricingPerKwh),
+        hostStripeAccountId: data.hostStripeAccountId ?? "",
+      },
+    });
   };
 
   if (isLoading) {
@@ -561,7 +548,6 @@ export default function ChargerDetailRoute() {
             <GradientButton
               label="Request Booking"
               onPress={submitBooking}
-              loading={submitting}
               disabled={Boolean(bookingValidationError)}
               style={styles.bookBtn}
             />

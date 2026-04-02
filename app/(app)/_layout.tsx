@@ -49,6 +49,18 @@ export default function AppLayout() {
         name="driver/vehicle"
         options={{ title: "Vehicle profile" }}
       />
+      <Stack.Screen
+        name="wishlist"
+        options={{ title: "Saved Chargers", headerShown: false }}
+      />
+      <Stack.Screen
+        name="help"
+        options={{ title: "Help & Support", headerShown: false }}
+      />
+      <Stack.Screen
+        name="host/analytics"
+        options={{ title: "Analytics", headerShown: false }}
+      />
     </Stack>
   );
 }

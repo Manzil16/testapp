@@ -34,7 +34,11 @@ serve(async (req) => {
     }
 
     // Cancel the authorization hold
-    const paymentIntent = await stripe.paymentIntents.cancel(paymentIntentId);
+    const paymentIntent = await stripe.paymentIntents.cancel(
+      paymentIntentId,
+      {},
+      { idempotencyKey: `payment_cancel_${paymentIntentId}` }
+    );
 
     // Update booking payment status
     const supabase = createClient(supabaseUrl, supabaseServiceKey);

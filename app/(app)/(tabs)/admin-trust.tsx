@@ -22,7 +22,7 @@ import {
   Spacing,
 } from "@/src/components";
 import { listChargers, updateChargerStatus, type Charger } from "@/src/features/chargers";
-import { getUserProfile } from "@/src/features/users/user.repository";
+import { getUserProfile, suspendUser } from "@/src/features/users/user.repository";
 import { AppConfig } from "@/src/constants/app";
 import { useEntranceAnimation, useRefresh } from "@/src/hooks";
 import { useThemeColors } from "@/src/hooks/useThemeColors";
@@ -118,6 +118,17 @@ export default function AdminTrustTabScreen() {
 
     return filtered;
   }, [chargers, filter, normalizedSearch, hostNames]);
+
+  const suspend = async (hostUserId: string) => {
+    try {
+      await suspendUser(hostUserId, true);
+      queryClient.invalidateQueries({ queryKey: ["profiles"] });
+      setSelected(null);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to suspend user.");
+    }
+  };
 
   const reinstate = async (charger: Charger) => {
     try {
@@ -353,6 +364,15 @@ export default function AdminTrustTabScreen() {
                 </Text>
               </View>
             )}
+
+            {/* Suspend Host */}
+            <PressableScale
+              style={styles.suspendUserBtn}
+              onPress={() => suspend(selected.hostUserId)}
+            >
+              <Ionicons name="ban-outline" size={16} color={Colors.error} />
+              <Text style={styles.suspendUserBtnText}>Suspend Host Account</Text>
+            </PressableScale>
           </View>
         ) : null}
       </BottomSheet>
@@ -552,5 +572,20 @@ const styles = StyleSheet.create({
     ...Typography.body,
     color: Colors.textSecondary,
     flex: 1,
+  },
+  suspendUserBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: Colors.errorLight,
+    borderRadius: Radius.pill,
+    paddingVertical: 12,
+    marginTop: Spacing.sm,
+  },
+  suspendUserBtnText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: Colors.error,
   },
 });

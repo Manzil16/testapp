@@ -45,19 +45,22 @@ serve(async (req) => {
 
     if (!accountId) {
       // Create new Stripe Connect Express account
-      const account = await stripe.accounts.create({
-        type: "express",
-        country: "AU",
-        email: profile?.email,
-        business_profile: {
-          name: profile?.display_name || undefined,
-          product_description: "EV charging station host on VehicleGrid",
+      const account = await stripe.accounts.create(
+        {
+          type: "express",
+          country: "AU",
+          email: profile?.email,
+          business_profile: {
+            name: profile?.display_name || undefined,
+            product_description: "EV charging station host on VehicleGrid",
+          },
+          capabilities: {
+            card_payments: { requested: true },
+            transfers: { requested: true },
+          },
         },
-        capabilities: {
-          card_payments: { requested: true },
-          transfers: { requested: true },
-        },
-      });
+        { idempotencyKey: `account_create_${hostUserId}` }
+      );
 
       accountId = account.id;
 
@@ -69,12 +72,15 @@ serve(async (req) => {
     }
 
     // Create an account link for onboarding
-    const accountLink = await stripe.accountLinks.create({
-      account: accountId,
-      refresh_url: `${supabaseUrl}/functions/v1/stripe-connect-onboard?refresh=true`,
-      return_url: `${supabaseUrl}/functions/v1/stripe-account-status?hostUserId=${hostUserId}`,
-      type: "account_onboarding",
-    });
+    const accountLink = await stripe.accountLinks.create(
+      {
+        account: accountId,
+        refresh_url: `${supabaseUrl}/functions/v1/stripe-connect-onboard?refresh=true`,
+        return_url: `${supabaseUrl}/functions/v1/stripe-account-status?hostUserId=${hostUserId}`,
+        type: "account_onboarding",
+      },
+      { idempotencyKey: `account_link_${accountId}` }
+    );
 
     return new Response(
       JSON.stringify({

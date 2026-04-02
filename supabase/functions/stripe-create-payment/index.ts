@@ -1,5 +1,6 @@
 // Supabase Edge Function: Create Payment Intent
 // Creates a Stripe PaymentIntent for a booking with platform fee split.
+// Fee percentages are ALWAYS read from platform_config — no hardcoded defaults.
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@14.10.0?target=deno";
@@ -30,13 +31,50 @@ serve(async (req) => {
   }
 
   try {
-    const { bookingId, amount, hostStripeAccountId, platformFeePercent = 10, hostFeePercent = 10 } =
-      await req.json();
+    const { bookingId, amount, hostStripeAccountId } = await req.json();
 
     if (!bookingId || !amount) {
       return new Response(
         JSON.stringify({ error: "bookingId and amount are required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Read fee percentages from platform_config — never fall back to a hardcoded default.
+    // If config is unavailable, reject the operation rather than silently using wrong fees.
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    const [{ data: feeData, error: feeError }, { data: hostFeeData, error: hostFeeError }] =
+      await Promise.all([
+        supabase
+          .from("platform_config")
+          .select("value")
+          .eq("key", "platform_fee_percent")
+          .single(),
+        supabase
+          .from("platform_config")
+          .select("value")
+          .eq("key", "host_fee_percent")
+          .single(),
+      ]);
+
+    if (feeError || !feeData || hostFeeError || !hostFeeData) {
+      console.error("[stripe-create-payment] platform_config read failed:", feeError, hostFeeError);
+      return new Response(
+        JSON.stringify({
+          error: "Platform fee configuration unavailable. Cannot create payment intent.",
+        }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const platformFeePercent = parseFloat(feeData.value);
+    const hostFeePercent = parseFloat(hostFeeData.value);
+
+    if (isNaN(platformFeePercent) || isNaN(hostFeePercent)) {
+      return new Response(
+        JSON.stringify({ error: "Platform fee configuration contains invalid values." }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
@@ -56,10 +94,12 @@ serve(async (req) => {
     }
 
     // Create PaymentIntent with manual capture (authorize now, capture on host approval)
-    const paymentIntent = await stripe.paymentIntents.create(intentParams as any);
+    const paymentIntent = await stripe.paymentIntents.create(
+      intentParams as any,
+      { idempotencyKey: `payment_create_${bookingId}` }
+    );
 
     // Update booking with payment intent ID
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
     await supabase
       .from("bookings")
       .update({ stripe_payment_intent_id: paymentIntent.id })

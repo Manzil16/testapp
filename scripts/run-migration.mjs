@@ -6,8 +6,8 @@
  *   node scripts/run-migration.mjs "postgresql://postgres:<DB_PASSWORD>@db.<PROJECT_REF>.supabase.co:5432/postgres"
  *
  * Find your connection string at:
- *   https://supabase.com/dashboard/project/oadagevadtstbjyhnopm/settings/database
- *   → "Connection string" → URI tab
+ *   Supabase Dashboard → Settings → Database → Connection string → URI tab
+ *   (see .env.local for your project URL)
  */
 import { readFileSync } from "fs";
 import pg from "pg";
@@ -16,7 +16,7 @@ const connectionString = process.argv[2];
 if (!connectionString) {
   console.error("Usage: node scripts/run-migration.mjs <DATABASE_URL>");
   console.error(
-    "\nFind your connection string at:\nhttps://supabase.com/dashboard/project/oadagevadtstbjyhnopm/settings/database"
+    "\nFind your connection string at:\nSupabase Dashboard → Settings → Database → Connection string → URI tab"
   );
   process.exit(1);
 }

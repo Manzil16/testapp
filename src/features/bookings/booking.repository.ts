@@ -48,10 +48,22 @@ function mapRow(row: Record<string, unknown>): Booking {
 export type BookingCreateResult =
   | { success: true; bookingId: string }
   | { conflict: true }
+  | { suspended: true }
   | { unverified: true; missing: { emailVerified: boolean; phoneVerified: boolean; paymentAdded: boolean } }
   | { error: string };
 
 export async function createBookingRequest(input: CreateBookingInput): Promise<BookingCreateResult> {
+  // Gate 0: driver must not be suspended
+  const { data: profileRow } = await supabase
+    .from("profiles")
+    .select("is_suspended")
+    .eq("id", input.driverUserId)
+    .single();
+
+  if (profileRow?.is_suspended) {
+    return { suspended: true };
+  }
+
   // Gate 1: driver must be verified
   const gate = await getVerificationGate(input.driverUserId);
   if (!gate?.driverCleared) {

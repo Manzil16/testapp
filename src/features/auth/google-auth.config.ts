@@ -19,3 +19,19 @@ export const GOOGLE_IOS_CLIENT_ID =
 
 export const GOOGLE_ANDROID_CLIENT_ID =
   "1053969645594-REPLACE_WITH_YOUR_ANDROID_CLIENT_ID.apps.googleusercontent.com";
+
+/**
+ * Call before initiating Google OAuth flow.
+ * Throws a clear, actionable error if the client IDs are still placeholders.
+ */
+export function validateGoogleAuthConfig(): void {
+  if (
+    GOOGLE_WEB_CLIENT_ID.includes("REPLACE_WITH_YOUR") ||
+    GOOGLE_IOS_CLIENT_ID.includes("REPLACE_WITH_YOUR") ||
+    GOOGLE_ANDROID_CLIENT_ID.includes("REPLACE_WITH_YOUR")
+  ) {
+    throw new Error(
+      "Google OAuth not configured. See .env.example for setup instructions."
+    );
+  }
+}

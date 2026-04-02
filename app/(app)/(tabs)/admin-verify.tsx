@@ -30,6 +30,7 @@ import {
 import { useAdminVerify, type PendingChargerWithHost } from "@/src/hooks/useAdminVerify";
 import { getDetailImageUrl } from "@/src/services/imageService";
 import { useRefresh } from "@/src/hooks";
+import { AppConfig } from "@/src/constants/app";
 
 interface RubricState {
   photos: number;
@@ -92,7 +93,8 @@ function ChargerVerifyCard({
 
   const totalScore = rubric.photos + rubric.specs + rubric.location + rubric.access + rubric.pricing;
   const allScored = rubric.photos > 0 && rubric.specs > 0 && rubric.location > 0 && rubric.access > 0 && rubric.pricing > 0;
-  const scoreColor = totalScore >= 85 ? Colors.success : totalScore >= 45 ? Colors.warning : Colors.error;
+  const scoreQualifies = totalScore >= AppConfig.VERIFICATION.approvedScore;
+  const scoreColor = scoreQualifies ? Colors.success : totalScore >= AppConfig.VERIFICATION.flaggedThreshold ? Colors.warning : Colors.error;
 
   const handleApprove = () => {
     if (!allScored) {
@@ -186,7 +188,7 @@ function ChargerVerifyCard({
             Total: {totalScore}/100
           </Text>
           <Text style={[Typography.caption, { color: scoreColor }]}>
-            {totalScore >= 85 ? "Approved range" : totalScore >= 45 ? "Needs review" : "Below threshold"}
+            {scoreQualifies ? "Approved range" : totalScore >= AppConfig.VERIFICATION.flaggedThreshold ? "Needs review" : "Below threshold"}
           </Text>
         </View>
 
@@ -212,10 +214,15 @@ function ChargerVerifyCard({
             label="Approve"
             onPress={handleApprove}
             loading={isApproving}
-            disabled={!allScored}
+            disabled={!allScored || !scoreQualifies}
             style={styles.actionHalf}
           />
         </View>
+        {allScored && !scoreQualifies && (
+          <Text style={styles.approveBlockedNote}>
+            Score must reach {AppConfig.VERIFICATION.approvedScore}/100 to approve. Current score: {totalScore}/100.
+          </Text>
+        )}
       </PremiumCard>
     </Animated.View>
   );
@@ -362,5 +369,11 @@ const styles = StyleSheet.create({
   },
   actionHalf: {
     flex: 1,
+  },
+  approveBlockedNote: {
+    ...Typography.caption,
+    color: Colors.warning,
+    textAlign: "center",
+    marginTop: Spacing.sm,
   },
 });

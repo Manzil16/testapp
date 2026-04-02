@@ -4,7 +4,7 @@ import { ActivityIndicator, Alert, StyleSheet, Text, TextInput, TouchableOpacity
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import {
@@ -28,15 +28,13 @@ import { useAuth } from "@/src/features/auth/auth-context";
 import { useAvatarUpload, useBadgeCounts, useDriverDashboard, useEntranceAnimation, useSettings } from "@/src/hooks";
 import { useAchievements } from "@/src/hooks/useAchievements";
 import { AppConfig } from "@/src/constants/app";
-import type { AppRole } from "@/src/features/users";
 import type { CurrencyCode } from "@/src/hooks/useSettings";
-
-const roleOptions: AppRole[] = ["driver", "host", "admin"];
 const CURRENCY_OPTIONS: CurrencyCode[] = ["AUD", "USD", "EUR", "GBP", "NZD"];
 
 // Achievements are now computed from real DB data via useAchievements hook
 
 export default function ProfileScreen() {
+  const router = useRouter();
   const { focusField } = useLocalSearchParams<{ focusField?: string }>();
   const { user, profile, updateProfileDetails } = useAuth();
   const entranceStyle = useEntranceAnimation();
@@ -53,11 +51,7 @@ export default function ProfileScreen() {
   const [displayName, setDisplayName] = useState("");
   const [phone, setPhone] = useState("");
   const [reservePercent, setReservePercent] = useState(String(AppConfig.VEHICLE_DEFAULTS.reservePercent));
-  const [role, setRole] = useState<AppRole>("driver");
   const [saving, setSaving] = useState(false);
-
-  const [devTapCount, setDevTapCount] = useState(0);
-  const [devToggleUnlocked, setDevToggleUnlocked] = useState(false);
 
   // Password change state
   const [showPasswordModal, setShowPasswordModal] = useState(false);
@@ -78,7 +72,6 @@ export default function ProfileScreen() {
     if (!profile) return;
     setDisplayName(profile.displayName || "");
     setPhone(profile.phone || "");
-    setRole(profile.role);
     setReservePercent(String(profile.preferredReservePercent ?? AppConfig.VEHICLE_DEFAULTS.reservePercent));
   }, [profile]);
 
@@ -108,7 +101,6 @@ export default function ProfileScreen() {
           profile.role === "driver"
             ? Math.max(AppConfig.VEHICLE_DEFAULTS.bounds.minReservePercent, Math.min(AppConfig.VEHICLE_DEFAULTS.bounds.maxReservePercent, Number(reservePercent) || AppConfig.VEHICLE_DEFAULTS.reservePercent))
             : undefined,
-        role: devToggleUnlocked ? role : undefined,
       });
       Alert.alert("Saved", "Profile updated.");
     } catch (err) {
@@ -157,17 +149,6 @@ export default function ProfileScreen() {
     setShowPasswordModal(false);
     setNewPassword("");
     setConfirmNewPassword("");
-  };
-
-  const handleVersionTap = () => {
-    const next = devTapCount + 1;
-    if (next >= AppConfig.DEV_TAP_COUNT) {
-      setDevToggleUnlocked(true);
-      setDevTapCount(0);
-      Alert.alert("Developer toggle enabled", "Role switcher is now visible for this session.");
-      return;
-    }
-    setDevTapCount(next);
   };
 
   if (!profile) {
@@ -286,28 +267,6 @@ export default function ProfileScreen() {
                 />
               ) : null}
 
-              {devToggleUnlocked ? (
-                <View style={styles.devRoleWrap}>
-                  <Text style={styles.devLabel}>Role (Dev Toggle)</Text>
-                  <View style={styles.roleRow}>
-                    {roleOptions.map((option) => {
-                      const selected = option === role;
-                      return (
-                        <TouchableOpacity
-                          key={option}
-                          style={[styles.roleChip, selected && styles.roleChipActive]}
-                          onPress={() => setRole(option)}
-                        >
-                          <Text style={[styles.roleChipLabel, selected && styles.roleChipLabelActive]}>
-                            {option}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                </View>
-              ) : null}
-
               <GradientButton label="Save Changes" onPress={handleSave} loading={saving} />
             </PremiumCard>
           </Animated.View>
@@ -372,6 +331,26 @@ export default function ProfileScreen() {
                   ))}
                 </View>
               )}
+
+              {/* Saved Chargers */}
+              <PressableScale
+                onPress={() => router.push("/(app)/wishlist" as any)}
+                style={styles.settingsRow}
+              >
+                <Ionicons name="heart-outline" size={18} color={Colors.textSecondary} />
+                <Text style={styles.settingsLabel}>Saved Chargers</Text>
+                <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
+              </PressableScale>
+
+              {/* Help & Support */}
+              <PressableScale
+                onPress={() => router.push("/(app)/help" as any)}
+                style={styles.settingsRow}
+              >
+                <Ionicons name="help-circle-outline" size={18} color={Colors.textSecondary} />
+                <Text style={styles.settingsLabel}>Help & Support</Text>
+                <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
+              </PressableScale>
 
               {/* Change Password */}
               <PressableScale
@@ -475,14 +454,9 @@ export default function ProfileScreen() {
             )}
           </Animated.View>
 
-          <TouchableOpacity style={styles.versionRow} onPress={handleVersionTap} activeOpacity={0.8}>
+          <View style={styles.versionRow}>
             <Text style={styles.versionText}>VehicleGrid v{version}</Text>
-            {!devToggleUnlocked ? (
-              <Text style={styles.versionHint}>{Math.max(0, AppConfig.DEV_TAP_COUNT - devTapCount)} taps to dev mode</Text>
-            ) : (
-              <Text style={styles.versionHint}>Dev mode enabled</Text>
-            )}
-          </TouchableOpacity>
+          </View>
         </ScreenContainer>
       </Animated.View>
     </SafeAreaView>
@@ -631,39 +605,6 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.lg,
     fontFamily: "Syne_700Bold",
   },
-  devRoleWrap: {
-    marginBottom: Spacing.lg,
-  },
-  devLabel: {
-    ...Typography.label,
-    marginBottom: Spacing.sm,
-  },
-  roleRow: {
-    flexDirection: "row",
-    gap: Spacing.sm,
-  },
-  roleChip: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: Radius.full,
-    paddingVertical: Spacing.sm,
-    alignItems: "center",
-    backgroundColor: Colors.surfaceAlt,
-  },
-  roleChipActive: {
-    borderColor: Colors.accent,
-    backgroundColor: Colors.accentLight,
-  },
-  roleChipLabel: {
-    ...Typography.caption,
-    textTransform: "capitalize",
-    fontWeight: "600",
-  },
-  roleChipLabelActive: {
-    color: Colors.accent,
-  },
-
   // Settings
   settingsSection: {
     marginBottom: Spacing.lg,
@@ -827,10 +768,5 @@ const styles = StyleSheet.create({
   versionText: {
     ...Typography.caption,
     color: Colors.textSecondary,
-  },
-  versionHint: {
-    ...Typography.caption,
-    color: Colors.textMuted,
-    marginTop: 2,
   },
 });

@@ -8,6 +8,7 @@ export interface UserProfile {
   isDriver: boolean;
   isHost: boolean;
   isAdmin: boolean;
+  isSuspended: boolean;
   phone?: string;
   avatarUrl?: string;
   preferredReservePercent?: number;

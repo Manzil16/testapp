@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { FlatList, RefreshControl, StyleSheet, Text, View } from "react-native";
+import { Alert, FlatList, RefreshControl, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
@@ -174,14 +174,39 @@ export default function HostBookingsTabScreen() {
                           {isPending && (
                             <>
                               <PressableScale
-                                onPress={() => actions.declineBooking(item)}
+                                onPress={() =>
+                                  Alert.alert(
+                                    "Decline Booking?",
+                                    "The driver will be notified and the booking will be cancelled.",
+                                    [
+                                      { text: "Cancel", style: "cancel" },
+                                      {
+                                        text: "Decline",
+                                        style: "destructive",
+                                        onPress: () => actions.declineBooking(item),
+                                      },
+                                    ]
+                                  )
+                                }
                                 style={styles.declineBtn}
                               >
                                 <Ionicons name="close" size={16} color={Colors.error} />
                                 <Text style={styles.declineBtnText}>Decline</Text>
                               </PressableScale>
                               <PressableScale
-                                onPress={() => actions.approveBooking(item)}
+                                onPress={() =>
+                                  Alert.alert(
+                                    "Approve Booking?",
+                                    "This will place an authorization hold on the driver's card and notify them. Continue?",
+                                    [
+                                      { text: "Cancel", style: "cancel" },
+                                      {
+                                        text: "Approve",
+                                        onPress: () => actions.approveBooking(item),
+                                      },
+                                    ]
+                                  )
+                                }
                                 style={styles.approveBtn}
                               >
                                 <Ionicons name="checkmark" size={16} color={Colors.textInverse} />
@@ -191,7 +216,19 @@ export default function HostBookingsTabScreen() {
                           )}
                           {isActive && item.status === "in_progress" && (
                             <PressableScale
-                              onPress={() => actions.markCompleted(item)}
+                              onPress={() =>
+                                Alert.alert(
+                                  "Mark Complete?",
+                                  "This will finalize the session and capture payment based on actual kWh used.",
+                                  [
+                                    { text: "Cancel", style: "cancel" },
+                                    {
+                                      text: "Mark Complete",
+                                      onPress: () => actions.markCompleted(item),
+                                    },
+                                  ]
+                                )
+                              }
                               style={styles.completeBtn}
                             >
                               <Ionicons name="checkmark-done" size={16} color={Colors.textInverse} />

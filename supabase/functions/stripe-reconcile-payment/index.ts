@@ -76,26 +76,33 @@ serve(async (req) => {
       );
     }
 
-    // Read platform fee from platform_config (do NOT hardcode)
-    const { data: feeConfig } = await supabase
-      .from("platform_config")
-      .select("value")
-      .eq("key", "platform_fee_percent")
-      .single();
+    // Read fee percentages from platform_config — never fall back to a hardcoded default.
+    // If config is unavailable, reject rather than silently capturing the wrong amount.
+    const [{ data: feeConfig, error: feeError }, { data: hostFeeConfig, error: hostFeeError }] =
+      await Promise.all([
+        supabase.from("platform_config").select("value").eq("key", "platform_fee_percent").single(),
+        supabase.from("platform_config").select("value").eq("key", "host_fee_percent").single(),
+      ]);
 
-    const platformFeePercent = feeConfig
-      ? parseFloat(feeConfig.value)
-      : 10;
+    if (feeError || !feeConfig || hostFeeError || !hostFeeConfig) {
+      console.error("[stripe-reconcile-payment] platform_config read failed:", feeError, hostFeeError);
+      return new Response(
+        JSON.stringify({
+          error: "Platform fee configuration unavailable. Cannot reconcile payment.",
+        }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
-    const { data: hostFeeConfig } = await supabase
-      .from("platform_config")
-      .select("value")
-      .eq("key", "host_fee_percent")
-      .single();
+    const platformFeePercent = parseFloat(feeConfig.value);
+    const hostFeePercent = parseFloat(hostFeeConfig.value);
 
-    const hostFeePercent = hostFeeConfig
-      ? parseFloat(hostFeeConfig.value)
-      : 10;
+    if (isNaN(platformFeePercent) || isNaN(hostFeePercent)) {
+      return new Response(
+        JSON.stringify({ error: "Platform fee configuration contains invalid values." }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     // Calculate actual amounts
     const pricePerKwh = parseFloat(booking.charger.price_per_kwh);
@@ -107,9 +114,11 @@ serve(async (req) => {
     // Capture the payment intent with the actual amount (in cents)
     const amountCents = Math.round(actualTotal * 100);
 
-    await stripe.paymentIntents.capture(booking.stripe_payment_intent_id, {
-      amount_to_capture: amountCents,
-    });
+    await stripe.paymentIntents.capture(
+      booking.stripe_payment_intent_id,
+      { amount_to_capture: amountCents },
+      { idempotencyKey: `payment_reconcile_${bookingId}` }
+    );
 
     // Update booking with actual amounts
     const { error: updateError } = await supabase
