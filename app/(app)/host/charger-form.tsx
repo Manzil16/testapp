@@ -698,23 +698,20 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   pricingSuggestionTitle: {
-    fontSize: 14,
+    ...Typography.body,
     fontWeight: "700" as const,
     color: Colors.accent,
-    fontFamily: "DMSans_700Bold",
   },
   pricingSuggestionBody: {
-    fontSize: 12,
-    color: Colors.textSecondary,
+    ...Typography.caption,
     lineHeight: 16,
-    fontFamily: "DMSans_400Regular",
   },
   pricingSuggestionTap: {
+    ...Typography.caption,
     fontSize: 11,
     color: Colors.accent,
     fontWeight: "600" as const,
     marginTop: Spacing.xs,
-    fontFamily: "DMSans_600SemiBold",
   },
   timeRow: {
     flexDirection: "row",
@@ -854,15 +851,13 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.borderSubtle,
   },
   suggestionPrimary: {
-    fontSize: 14,
-    fontWeight: "500",
+    ...Typography.body,
+    fontWeight: "500" as const,
     color: Colors.textPrimary,
-    fontFamily: "DMSans_500Medium",
   },
   suggestionSecondary: {
-    fontSize: 12,
+    ...Typography.caption,
     color: Colors.textMuted,
     marginTop: 2,
-    fontFamily: "DMSans_400Regular",
   },
 });

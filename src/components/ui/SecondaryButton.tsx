@@ -6,7 +6,7 @@ import {
   TouchableOpacity,
   ViewStyle,
 } from "react-native";
-import { Colors, Radius, Spacing } from "@/src/features/shared/theme";
+import { Colors, Radius, Spacing, Typography } from "@/src/features/shared/theme";
 
 interface SecondaryButtonProps {
   label: string;
@@ -82,8 +82,8 @@ const styles = StyleSheet.create({
     opacity: 0.45,
   },
   label: {
-    fontSize: 14,
-    fontWeight: "600",
+    ...Typography.label,
+    fontWeight: "600" as const,
     color: Colors.primary,
   },
   ghostLabel: {

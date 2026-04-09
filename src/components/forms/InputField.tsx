@@ -119,10 +119,9 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.lg,
   },
   label: {
-    fontSize: 12,
-    fontWeight: "600",
+    ...Typography.caption,
+    fontWeight: "600" as const,
     color: Colors.textSecondary,
-    fontFamily: "DMSans_600SemiBold",
     marginBottom: 6,
   },
   inputRow: {
@@ -147,11 +146,10 @@ const styles = StyleSheet.create({
     marginLeft: Spacing.sm,
   },
   input: {
+    ...Typography.body,
     flex: 1,
-    fontSize: 14,
     color: Colors.textPrimary,
     paddingVertical: 0,
-    fontFamily: "DMSans_400Regular",
   },
   inputWithLeft: {
     // padding handled by leftIcon margin

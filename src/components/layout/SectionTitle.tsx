@@ -51,16 +51,14 @@ const styles = StyleSheet.create({
     ...Typography.sectionTitle,
   },
   subtitle: {
-    fontSize: 13,
+    ...Typography.label,
     color: Colors.textMuted,
-    fontFamily: "DMSans_400Regular",
     marginTop: 2,
   },
   action: {
-    fontSize: 13,
-    fontWeight: "600",
+    ...Typography.label,
+    fontWeight: "600" as const,
     color: Colors.primary,
-    fontFamily: "DMSans_600SemiBold",
     marginTop: 2,
   },
 });

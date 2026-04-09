@@ -4,7 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 import { useAuth } from "@/src/features/auth/auth-context";
 import { BadgeWrapper } from "@/src/components";
-import { Colors, Shadows, Typography } from "@/src/features/shared/theme";
+import { Colors, Shadows, Spacing, Typography } from "@/src/features/shared/theme";
 import { useBadgeCounts } from "@/src/hooks";
 
 function icon(name: keyof typeof Ionicons.glyphMap) {
@@ -15,18 +15,35 @@ function icon(name: keyof typeof Ionicons.glyphMap) {
   return TabIcon;
 }
 
+const sharedHeaderOptions = {
+  headerShown: true,
+  headerBackVisible: false,
+  headerLeft: () => null,
+  headerStyle: {
+    backgroundColor: Colors.surface,
+    elevation: 0,
+    shadowOpacity: 0,
+  } as const,
+  headerTintColor: Colors.textPrimary,
+  headerTitleStyle: {
+    ...Typography.cardTitle,
+    color: Colors.textPrimary,
+  },
+  headerShadowVisible: false,
+};
+
 const sharedOptions = {
   headerShown: false,
   tabBarActiveTintColor: Colors.accent,
   tabBarInactiveTintColor: Colors.textMuted,
   tabBarLabelStyle: {
+    ...Typography.badge,
     fontSize: 10,
     fontWeight: "600" as const,
-    fontFamily: "DMSans_600SemiBold",
   },
   tabBarStyle: {
     height: 68,
-    paddingTop: 8,
+    paddingTop: Spacing.sm,
     paddingBottom: 10,
     borderTopWidth: 0.5,
     borderTopColor: Colors.borderLight,
@@ -133,6 +150,7 @@ export default function AppTabsLayout() {
       <Tabs.Screen
         name="dashboard"
         options={{
+          ...sharedHeaderOptions,
           title: "Home",
           href: isDriver ? undefined : null,
           tabBarIcon: icon("home"),
@@ -141,6 +159,7 @@ export default function AppTabsLayout() {
       <Tabs.Screen
         name="discover"
         options={{
+          ...sharedHeaderOptions,
           title: "Explore",
           href: isDriver ? undefined : null,
           tabBarIcon: icon("search"),
@@ -149,6 +168,7 @@ export default function AppTabsLayout() {
       <Tabs.Screen
         name="trip"
         options={{
+          ...sharedHeaderOptions,
           title: "Trips",
           href: isDriver ? undefined : null,
           tabBarIcon: icon("map"),
@@ -157,9 +177,19 @@ export default function AppTabsLayout() {
       <Tabs.Screen
         name="bookings"
         options={{
+          ...sharedHeaderOptions,
           title: "Bookings",
           href: isDriver ? undefined : null,
           tabBarIcon: BookingsIcon,
+        }}
+      />
+      <Tabs.Screen
+        name="range-calculator"
+        options={{
+          ...sharedHeaderOptions,
+          title: "Range",
+          href: isDriver ? undefined : null,
+          tabBarIcon: icon("speedometer-outline"),
         }}
       />
 
@@ -167,6 +197,7 @@ export default function AppTabsLayout() {
       <Tabs.Screen
         name="host-home"
         options={{
+          ...sharedHeaderOptions,
           title: "Home",
           href: isHost ? undefined : null,
           tabBarIcon: HostHomeIcon,
@@ -175,6 +206,7 @@ export default function AppTabsLayout() {
       <Tabs.Screen
         name="host-chargers"
         options={{
+          ...sharedHeaderOptions,
           title: "Chargers",
           href: isHost ? undefined : null,
           tabBarIcon: HostChargersIcon,
@@ -183,6 +215,7 @@ export default function AppTabsLayout() {
       <Tabs.Screen
         name="host-bookings"
         options={{
+          ...sharedHeaderOptions,
           title: "Bookings",
           href: isHost ? undefined : null,
           tabBarIcon: HostBookingsIcon,
@@ -193,6 +226,7 @@ export default function AppTabsLayout() {
       <Tabs.Screen
         name="admin-overview"
         options={{
+          ...sharedHeaderOptions,
           title: "Overview",
           href: isAdmin ? undefined : null,
           tabBarIcon: icon("grid"),
@@ -201,6 +235,7 @@ export default function AppTabsLayout() {
       <Tabs.Screen
         name="admin-verify"
         options={{
+          ...sharedHeaderOptions,
           title: "Verify",
           href: isAdmin ? undefined : null,
           tabBarIcon: AdminVerifyIcon,
@@ -209,6 +244,7 @@ export default function AppTabsLayout() {
       <Tabs.Screen
         name="admin-trust"
         options={{
+          ...sharedHeaderOptions,
           title: "Trust",
           href: isAdmin ? undefined : null,
           tabBarIcon: icon("people"),
@@ -217,7 +253,8 @@ export default function AppTabsLayout() {
       <Tabs.Screen
         name="admin-settings"
         options={{
-          title: "Settings",
+          ...sharedHeaderOptions,
+          title: "Config",
           href: isAdmin ? undefined : null,
           tabBarIcon: icon("settings"),
         }}
@@ -227,6 +264,7 @@ export default function AppTabsLayout() {
       <Tabs.Screen
         name="profile"
         options={{
+          ...sharedHeaderOptions,
           title: "Profile",
           href: isDriver || isHost ? undefined : null,
           tabBarIcon: ProfileTabIcon,

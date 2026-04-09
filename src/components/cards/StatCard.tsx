@@ -90,22 +90,18 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.md,
   },
   value: {
+    ...Typography.sectionTitle,
     fontSize: 24,
-    fontWeight: "700",
-    color: Colors.textPrimary,
-    fontFamily: "Syne_700Bold",
     marginBottom: 2,
   },
   label: {
-    fontSize: 11,
-    fontWeight: "500",
+    ...Typography.caption,
+    fontWeight: "500" as const,
     color: Colors.textMuted,
-    fontFamily: "DMSans_500Medium",
   },
   trend: {
-    fontSize: 11,
-    fontWeight: "600",
+    ...Typography.caption,
+    fontWeight: "600" as const,
     marginTop: 4,
-    fontFamily: "DMSans_600SemiBold",
   },
 });

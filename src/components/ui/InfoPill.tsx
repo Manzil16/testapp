@@ -1,6 +1,6 @@
 import React from "react";
 import { StyleSheet, Text, View, ViewStyle } from "react-native";
-import { Colors, Radius } from "@/src/features/shared/theme";
+import { Colors, Radius, Typography } from "@/src/features/shared/theme";
 
 export type InfoPillVariant = "default" | "success" | "warning" | "error" | "info" | "primary";
 
@@ -51,10 +51,8 @@ const styles = StyleSheet.create({
     marginRight: 4,
   },
   label: {
-    fontSize: 10,
-    fontWeight: "700",
+    ...Typography.badge,
     letterSpacing: 0.3,
-    fontFamily: "DMSans_700Bold",
     textTransform: "uppercase",
   },
 });

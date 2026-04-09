@@ -7,7 +7,7 @@ import {
   ViewStyle,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { Colors, Radius, Shadows, Spacing } from "@/src/features/shared/theme";
+import { Colors, Radius, Shadows, Spacing, Typography } from "@/src/features/shared/theme";
 
 interface SearchBarProps {
   value: string;
@@ -95,10 +95,9 @@ const styles = StyleSheet.create({
     marginRight: Spacing.sm,
   },
   input: {
+    ...Typography.body,
     flex: 1,
-    fontSize: 14,
     color: Colors.textPrimary,
-    fontFamily: "DMSans_400Regular",
     paddingVertical: 0,
   },
   clearBtn: {

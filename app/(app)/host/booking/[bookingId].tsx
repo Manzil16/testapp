@@ -61,15 +61,13 @@ const rowStyles = StyleSheet.create({
     borderBottomColor: Colors.borderLight,
   },
   label: {
-    fontSize: 13,
+    ...Typography.label,
     color: Colors.textSecondary,
-    fontFamily: "DMSans_400Regular",
   },
   value: {
-    fontSize: 13,
-    fontWeight: "600",
+    ...Typography.label,
+    fontWeight: "600" as const,
     color: Colors.textPrimary,
-    fontFamily: "DMSans_600SemiBold",
   },
 });
 
@@ -428,9 +426,9 @@ const styles = StyleSheet.create({
     borderRadius: 5,
   },
   statusLabel: {
+    ...Typography.cardTitle,
     fontSize: 15,
-    fontWeight: "700",
-    fontFamily: "DMSans_700Bold",
+    fontWeight: "700" as const,
   },
 
   // Driver
@@ -443,16 +441,14 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
   },
   driverName: {
+    ...Typography.cardTitle,
     fontSize: 16,
-    fontWeight: "700",
-    color: Colors.textPrimary,
-    fontFamily: "DMSans_700Bold",
+    fontWeight: "700" as const,
     marginBottom: 2,
   },
   driverMeta: {
-    fontSize: 13,
+    ...Typography.label,
     color: Colors.textMuted,
-    fontFamily: "DMSans_400Regular",
   },
 
   section: {
@@ -465,35 +461,31 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.md,
   },
   totalLabel: {
-    fontSize: 14,
-    fontWeight: "700",
+    ...Typography.body,
+    fontWeight: "700" as const,
     color: Colors.textPrimary,
-    fontFamily: "DMSans_700Bold",
   },
   totalValue: {
+    ...Typography.sectionTitle,
     fontSize: 16,
-    fontWeight: "700",
-    color: Colors.textPrimary,
-    fontFamily: "Syne_700Bold",
   },
   payoutNote: {
+    ...Typography.caption,
     fontSize: 11,
     color: Colors.textMuted,
-    fontFamily: "DMSans_400Regular",
     marginTop: Spacing.sm,
     lineHeight: 16,
   },
 
   // Cancel reason
   cancelReason: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-    fontFamily: "DMSans_400Regular",
+    ...Typography.body,
     lineHeight: 20,
   },
 
   // Note input
   noteInput: {
+    ...Typography.body,
     backgroundColor: Colors.surfaceAlt,
     borderRadius: Radius.input,
     borderWidth: 1,
@@ -501,8 +493,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.md,
     color: Colors.textPrimary,
-    fontSize: 14,
-    fontFamily: "DMSans_400Regular",
     minHeight: 80,
     textAlignVertical: "top",
   },

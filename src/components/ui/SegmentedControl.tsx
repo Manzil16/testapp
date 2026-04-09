@@ -1,6 +1,6 @@
 import React from "react";
 import { StyleSheet, Text, TouchableOpacity, View, ViewStyle } from "react-native";
-import { Colors, Radius, Spacing } from "@/src/features/shared/theme";
+import { Colors, Radius, Spacing, Typography } from "@/src/features/shared/theme";
 
 interface Segment {
   id: string;
@@ -68,15 +68,13 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   label: {
-    fontSize: 13,
-    fontWeight: "500",
+    ...Typography.label,
     color: Colors.textSecondary,
-    fontFamily: "DMSans_500Medium",
   },
   labelActive: {
-    fontWeight: "600",
+    ...Typography.label,
+    fontWeight: "600" as const,
     color: Colors.textPrimary,
-    fontFamily: "DMSans_600SemiBold",
   },
   icon: {
     fontSize: 13,

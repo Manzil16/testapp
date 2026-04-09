@@ -258,16 +258,14 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
   },
   price: {
+    ...Typography.cardTitle,
     fontSize: 15,
-    fontWeight: "700",
+    fontWeight: "700" as const,
     color: Colors.primary,
-    fontFamily: "Syne_700Bold",
   },
   priceUnit: {
-    fontSize: 11,
-    fontWeight: "400",
+    ...Typography.caption,
     color: Colors.textMuted,
-    fontFamily: "DMSans_400Regular",
   },
   address: {
     fontSize: 12,

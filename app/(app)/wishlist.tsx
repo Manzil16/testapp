@@ -166,10 +166,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   countText: {
+    ...Typography.badge,
     color: Colors.textInverse,
-    fontSize: 12,
-    fontWeight: "700",
-    fontFamily: "DMSans_700Bold",
   },
   listContent: {
     paddingBottom: Spacing.xxxl,
@@ -193,9 +191,8 @@ const styles = StyleSheet.create({
     ...Shadows.subtle,
   },
   removeText: {
-    fontSize: 12,
-    fontWeight: "600",
+    ...Typography.caption,
+    fontWeight: "600" as const,
     color: Colors.error,
-    fontFamily: "DMSans_600SemiBold",
   },
 });

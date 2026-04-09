@@ -264,11 +264,9 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.8)",
   },
   heroName: {
-    fontSize: 28,
-    fontWeight: "800",
-    color: "#FFFFFF",
+    ...Typography.pageTitle,
+    color: Colors.textInverse,
     letterSpacing: -0.5,
-    fontFamily: "Syne_700Bold",
   },
   earningsRow: {
     flexDirection: "row",

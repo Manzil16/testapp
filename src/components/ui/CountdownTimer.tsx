@@ -68,11 +68,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   timer: {
+    ...Typography.heroNumber,
     fontSize: 36,
-    fontWeight: "700",
-    color: Colors.textPrimary,
     fontVariant: ["tabular-nums"],
-    fontFamily: "Syne_700Bold",
     letterSpacing: 1,
   },
   timerWarning: {

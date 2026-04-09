@@ -818,10 +818,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   statValue: {
+    ...Typography.sectionTitle,
     fontSize: 20,
-    fontWeight: "700",
-    color: Colors.textPrimary,
-    fontFamily: "Syne_700Bold",
   },
   statLabel: {
     ...Typography.caption,

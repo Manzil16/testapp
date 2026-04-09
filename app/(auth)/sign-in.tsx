@@ -218,6 +218,10 @@ export default function SignInScreen() {
               style={styles.ctaBtn}
             />
 
+            <Link href={"/(auth)/forgot-password" as any} style={styles.forgotLink}>
+              Forgot password?
+            </Link>
+
             <Text style={styles.footerText}>
               New to VehicleGrid?{" "}
               <Link href={"/(auth)/sign-up" as any} style={styles.footerLink}>
@@ -291,18 +295,17 @@ const styles = StyleSheet.create({
     marginBottom: 5,
   },
   roleTileLabel: {
-    fontSize: 12,
-    fontWeight: "700",
+    ...Typography.caption,
+    fontWeight: "700" as const,
     color: Colors.textPrimary,
     marginBottom: 2,
-    fontFamily: "DMSans_700Bold",
   },
   roleTileDesc: {
+    ...Typography.caption,
     fontSize: 10,
     color: Colors.textMuted,
     textAlign: "center",
     lineHeight: 13,
-    fontFamily: "DMSans_400Regular",
   },
   card: {
     backgroundColor: Colors.surface,
@@ -348,10 +351,10 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   googleBtnText: {
+    ...Typography.label,
     fontSize: 15,
-    fontWeight: "600",
+    fontWeight: "600" as const,
     color: Colors.textPrimary,
-    fontFamily: "DMSans_600SemiBold",
   },
   divider: {
     flexDirection: "row",
@@ -365,24 +368,29 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.borderLight,
   },
   dividerLabel: {
+    ...Typography.caption,
     fontSize: 11,
     color: Colors.textMuted,
-    fontWeight: "500",
-    fontFamily: "DMSans_500Medium",
+    fontWeight: "500" as const,
   },
   ctaBtn: {
     marginTop: Spacing.sm,
   },
   footerText: {
+    ...Typography.label,
     textAlign: "center",
-    fontSize: 13,
-    color: Colors.textSecondary,
     marginTop: Spacing.xl,
-    fontFamily: "DMSans_400Regular",
   },
   footerLink: {
     color: Colors.accent,
     fontWeight: "700",
+  },
+  forgotLink: {
+    ...Typography.label,
+    textAlign: "center",
+    color: Colors.accent,
+    marginTop: Spacing.md,
+    marginBottom: Spacing.xs,
   },
   // roleHint removed
 });

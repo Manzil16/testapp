@@ -5,7 +5,7 @@ import Animated, {
   FadeOutUp,
 } from "react-native-reanimated";
 import { Ionicons } from "@expo/vector-icons";
-import { Colors, Radius, Spacing } from "@/src/features/shared/theme";
+import { Colors, Radius, Spacing, Typography } from "@/src/features/shared/theme";
 
 // Simple polling-based connectivity check
 function useNetworkStatus() {
@@ -70,9 +70,8 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.sm,
   },
   text: {
-    fontSize: 13,
-    fontWeight: "600",
+    ...Typography.label,
+    fontWeight: "600" as const,
     color: Colors.textPrimary,
-    fontFamily: "DMSans_600SemiBold",
   },
 });

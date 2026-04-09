@@ -1,4 +1,18 @@
 import { Stack } from "expo-router";
+import { Colors, Typography } from "@/src/features/shared/theme";
+
+const sharedStackOptions = {
+  headerStyle: {
+    backgroundColor: Colors.surface,
+  },
+  headerTintColor: Colors.textPrimary,
+  headerTitleStyle: {
+    ...Typography.cardTitle,
+    color: Colors.textPrimary,
+  },
+  headerBackTitle: "Back",
+  headerShadowVisible: false,
+} as const;
 
 export default function AppLayout() {
   return (
@@ -11,55 +25,56 @@ export default function AppLayout() {
           headerTitle: "",
           headerTransparent: true,
           headerBackTitle: "Back",
+          headerTintColor: Colors.textInverse,
         }}
       />
       <Stack.Screen
         name="checkout"
-        options={{ title: "Confirm booking" }}
+        options={{ ...sharedStackOptions, title: "Confirm booking" }}
       />
       <Stack.Screen
         name="bookings/[bookingId]"
-        options={{ title: "Booking details" }}
+        options={{ ...sharedStackOptions, title: "Booking details" }}
       />
       <Stack.Screen
         name="host/booking/[bookingId]"
-        options={{ title: "Booking request" }}
+        options={{ ...sharedStackOptions, title: "Booking request" }}
       />
       <Stack.Screen
         name="host/charger-form"
-        options={{ title: "Add charger" }}
+        options={{ ...sharedStackOptions, title: "Add charger" }}
       />
       <Stack.Screen
         name="payment-success"
-        options={{ title: "", headerBackVisible: false }}
+        options={{ ...sharedStackOptions, title: "", headerBackVisible: false }}
       />
       <Stack.Screen
         name="session-history"
-        options={{ title: "Session history" }}
+        options={{ ...sharedStackOptions, title: "Session history" }}
       />
       <Stack.Screen
         name="notifications"
-        options={{ title: "Notifications" }}
+        options={{ ...sharedStackOptions, title: "Notifications" }}
       />
       <Stack.Screen
         name="verification-required"
-        options={{ title: "Complete verification" }}
+        options={{ ...sharedStackOptions, title: "Complete verification" }}
       />
       <Stack.Screen
         name="driver/vehicle"
-        options={{ title: "Vehicle profile" }}
+        options={{ ...sharedStackOptions, title: "Vehicle profile" }}
       />
       <Stack.Screen
         name="wishlist"
-        options={{ title: "Saved Chargers", headerShown: false }}
+        options={{ ...sharedStackOptions, title: "Saved chargers" }}
       />
       <Stack.Screen
         name="help"
-        options={{ title: "Help & Support", headerShown: false }}
+        options={{ ...sharedStackOptions, title: "Help & Support" }}
       />
       <Stack.Screen
         name="host/analytics"
-        options={{ title: "Analytics", headerShown: false }}
+        options={{ ...sharedStackOptions, title: "Analytics" }}
       />
     </Stack>
   );

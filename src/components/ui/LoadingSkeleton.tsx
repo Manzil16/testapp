@@ -66,6 +66,23 @@ export function ChargerCardSkeleton() {
   );
 }
 
+export function BookingCardSkeleton() {
+  return (
+    <View style={styles.bookingCard}>
+      <View style={styles.bookingRow}>
+        <SkeletonBox width={40} height={40} borderRadius={Radius.lg} />
+        <View style={styles.bookingTextGroup}>
+          <SkeletonBox width="55%" height={14} />
+          <SkeletonBox width="40%" height={12} style={styles.mt4} />
+        </View>
+        <SkeletonBox width={60} height={22} borderRadius={Radius.pill} />
+      </View>
+      <SkeletonBox width="80%" height={12} style={styles.mt8} />
+      <SkeletonBox width="30%" height={12} style={styles.mt4} />
+    </View>
+  );
+}
+
 export function StatCardSkeleton() {
   return (
     <View style={styles.statCard}>
@@ -93,6 +110,20 @@ const styles = StyleSheet.create({
   cardBody: {
     padding: 16,
     gap: 8,
+  },
+  bookingCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.card,
+    padding: 16,
+    marginBottom: 12,
+  },
+  bookingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  bookingTextGroup: {
+    flex: 1,
   },
   statCard: {
     backgroundColor: Colors.surface,

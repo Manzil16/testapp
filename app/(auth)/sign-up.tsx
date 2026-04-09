@@ -433,11 +433,11 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.xxl,
   },
   sectionLabel: {
+    ...Typography.label,
     fontSize: 15,
-    fontWeight: "700",
+    fontWeight: "700" as const,
     color: Colors.textPrimary,
     marginBottom: Spacing.md,
-    fontFamily: "DMSans_700Bold",
   },
   roleGrid: {
     flexDirection: "row",
@@ -518,10 +518,9 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   roleBannerText: {
-    fontSize: 13,
+    ...Typography.label,
     textAlign: "center",
     lineHeight: 18,
-    fontFamily: "DMSans_500Medium",
     flex: 1,
   },
   card: {
@@ -565,11 +564,10 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   googleBtnText: {
-    fontSize: 14,
-    fontWeight: "600",
+    ...Typography.body,
+    fontWeight: "600" as const,
     color: Colors.textPrimary,
     flexShrink: 1,
-    fontFamily: "DMSans_600SemiBold",
   },
   divider: {
     flexDirection: "row",
@@ -583,10 +581,10 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.borderLight,
   },
   dividerLabel: {
+    ...Typography.caption,
     fontSize: 11,
     color: Colors.textMuted,
-    fontWeight: "500",
-    fontFamily: "DMSans_500Medium",
+    fontWeight: "500" as const,
   },
   ctaBtn: {
     marginTop: Spacing.sm,

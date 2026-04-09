@@ -1,6 +1,6 @@
 import React from "react";
 import { ScrollView, StyleSheet, Text, View, ViewStyle } from "react-native";
-import { Colors, Radius, Spacing } from "@/src/features/shared/theme";
+import { Colors, Radius, Spacing, Typography } from "@/src/features/shared/theme";
 import { PressableScale } from "./PressableScale";
 
 interface FilterChipProps {
@@ -79,9 +79,8 @@ const styles = StyleSheet.create({
     marginRight: 5,
   },
   label: {
-    fontSize: 13,
-    fontWeight: "600",
-    fontFamily: "DMSans_600SemiBold",
+    ...Typography.label,
+    fontWeight: "600" as const,
   },
   labelActive: {
     color: Colors.textInverse,

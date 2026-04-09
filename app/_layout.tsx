@@ -60,7 +60,7 @@ const tabByRole: Record<AppRole, string> = {
 };
 
 const allowedTabsByRole: Record<AppRole, Set<string>> = {
-  driver: new Set(["dashboard", "discover", "trip", "bookings", "profile", "settings"]),
+  driver: new Set(["dashboard", "discover", "trip", "bookings", "range-calculator", "profile", "settings"]),
   host: new Set(["host-home", "host-chargers", "host-bookings", "profile", "settings"]),
   admin: new Set(["admin-overview", "admin-verify", "admin-trust", "admin-settings"]),
 };
@@ -219,7 +219,7 @@ function AppRouteGate({ themeColors }: { themeColors: { background: string } }) 
   const segments = useSegments() as string[];
 
   // useAuth() errors are caught by the wrapping AppErrorBoundary
-  const { isAuthenticated, profile, isBootstrapping, isProfileLoading, needsRoleSelection } =
+  const { isAuthenticated, profile, isBootstrapping, isProfileLoading, needsRoleSelection, needsOnboarding, isOnboardingChecking } =
     useAuth();
 
   const authLoading = isBootstrapping || isProfileLoading;
@@ -274,7 +274,10 @@ function AppRouteGate({ themeColors }: { themeColors: { background: string } }) 
   }, []);
 
   useEffect(() => {
-    if (isBootstrapping || isProfileLoading) return;
+    // isOnboardingChecking: AsyncStorage read is in flight — we don't yet know
+    // if the onboarding screen is needed. Block ALL navigation until it settles
+    // so the first redirect goes to the right place.
+    if (isBootstrapping || isProfileLoading || isOnboardingChecking) return;
 
     try {
       const inAuthGroup = segments[0] === "(auth)";
@@ -297,6 +300,16 @@ function AppRouteGate({ themeColors }: { themeColors: { background: string } }) 
       }
 
       if (!profile) return;
+
+      // First-time onboarding: drivers add a card, hosts connect Stripe.
+      // Skipped for admins and for users who already dismissed the screen.
+      if (needsOnboarding) {
+        const alreadyOnOnboarding = segments[0] === "(auth)" && segments[1] === "onboarding";
+        if (!alreadyOnOnboarding) {
+          router.replace("/(auth)/onboarding" as any);
+        }
+        return;
+      }
 
       const defaultAppRoute = tabByRole[profile.role] || tabByRole.driver;
 
@@ -328,7 +341,7 @@ function AppRouteGate({ themeColors }: { themeColors: { background: string } }) 
     } catch (err) {
       console.error("[AppRouteGate] Routing error:", err);
     }
-  }, [isAuthenticated, isBootstrapping, isProfileLoading, needsRoleSelection, profile, router, segments]);
+  }, [isAuthenticated, isBootstrapping, isProfileLoading, isOnboardingChecking, needsRoleSelection, needsOnboarding, profile, router, segments]);
 
   return (
     <>

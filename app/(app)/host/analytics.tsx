@@ -68,9 +68,9 @@ const barStyles = StyleSheet.create({
     alignItems: "center",
   },
   barValue: {
+    ...Typography.caption,
     fontSize: 9,
     color: Colors.textMuted,
-    fontFamily: "DMSans_400Regular",
     marginBottom: 2,
   },
   barTrack: {
@@ -87,9 +87,9 @@ const barStyles = StyleSheet.create({
     borderRadius: Radius.sm,
   },
   barLabel: {
+    ...Typography.caption,
     fontSize: 10,
     color: Colors.textMuted,
-    fontFamily: "DMSans_400Regular",
     marginTop: 4,
   },
 });
@@ -367,9 +367,8 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.border,
   },
   headerSub: {
-    fontSize: 12,
+    ...Typography.caption,
     color: Colors.textMuted,
-    fontFamily: "DMSans_400Regular",
   },
   scroll: {
     paddingHorizontal: Spacing.lg,
@@ -384,19 +383,17 @@ const styles = StyleSheet.create({
     ...Shadows.glow,
   },
   heroLabel: {
-    fontSize: 13,
-    fontWeight: "600",
+    ...Typography.label,
+    fontWeight: "600" as const,
     color: "rgba(255,255,255,0.75)",
-    fontFamily: "DMSans_600SemiBold",
     textTransform: "uppercase",
     letterSpacing: 0.5,
     marginBottom: Spacing.xs,
   },
   heroValue: {
+    ...Typography.heroNumber,
     fontSize: 36,
-    fontWeight: "700",
-    color: "#FFFFFF",
-    fontFamily: "Syne_700Bold",
+    color: Colors.textInverse,
     marginBottom: Spacing.lg,
   },
   heroRow: {
@@ -410,15 +407,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   heroStatValue: {
+    ...Typography.sectionTitle,
     fontSize: 16,
-    fontWeight: "700",
-    color: "#FFFFFF",
-    fontFamily: "Syne_700Bold",
+    color: Colors.textInverse,
   },
   heroStatLabel: {
+    ...Typography.caption,
     fontSize: 10,
     color: "rgba(255,255,255,0.65)",
-    fontFamily: "DMSans_400Regular",
     textTransform: "uppercase",
     marginTop: 2,
   },
@@ -433,16 +429,13 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.lg,
   },
   sectionTitle: {
+    ...Typography.sectionTitle,
     fontSize: 16,
-    fontWeight: "700",
-    color: Colors.textPrimary,
-    fontFamily: "Syne_700Bold",
     marginBottom: 2,
   },
   sectionSub: {
-    fontSize: 12,
+    ...Typography.caption,
     color: Colors.textMuted,
-    fontFamily: "DMSans_400Regular",
     marginBottom: Spacing.lg,
   },
 
@@ -464,25 +457,21 @@ const styles = StyleSheet.create({
     borderRadius: 5,
   },
   statusLabel: {
+    ...Typography.label,
     flex: 1,
-    fontSize: 13,
     color: Colors.textPrimary,
-    fontFamily: "DMSans_400Regular",
     textTransform: "capitalize",
   },
   statusCount: {
-    fontSize: 13,
-    fontWeight: "600",
+    ...Typography.label,
+    fontWeight: "600" as const,
     color: Colors.textPrimary,
-    fontFamily: "DMSans_600SemiBold",
   },
 
   // Per-charger list
   listSectionTitle: {
+    ...Typography.sectionTitle,
     fontSize: 16,
-    fontWeight: "700",
-    color: Colors.textPrimary,
-    fontFamily: "Syne_700Bold",
     marginBottom: Spacing.md,
   },
   chargerCard: {
@@ -501,16 +490,13 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.md,
   },
   chargerName: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: Colors.textPrimary,
-    fontFamily: "DMSans_700Bold",
+    ...Typography.cardTitle,
+    fontWeight: "700" as const,
     marginBottom: 2,
   },
   chargerAddr: {
-    fontSize: 12,
+    ...Typography.caption,
     color: Colors.textMuted,
-    fontFamily: "DMSans_400Regular",
   },
   chargerStats: {
     flexDirection: "row",
@@ -523,15 +509,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   chargerStatValue: {
-    fontSize: 13,
-    fontWeight: "700",
+    ...Typography.label,
+    fontWeight: "700" as const,
     color: Colors.textPrimary,
-    fontFamily: "DMSans_700Bold",
   },
   chargerStatLabel: {
+    ...Typography.caption,
     fontSize: 10,
     color: Colors.textMuted,
-    fontFamily: "DMSans_400Regular",
     marginTop: 2,
     textTransform: "uppercase",
   },
@@ -548,14 +533,14 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
   },
   payoutText: {
+    ...Typography.label,
     flex: 1,
-    fontSize: 13,
     color: Colors.textSecondary,
-    fontFamily: "DMSans_400Regular",
     lineHeight: 19,
   },
   payoutBold: {
-    fontFamily: "DMSans_700Bold",
+    ...Typography.label,
+    fontWeight: "700" as const,
     color: Colors.textPrimary,
   },
 });

@@ -287,16 +287,12 @@ const styles = StyleSheet.create({
     ...Shadows.card,
   },
   heroTitle: {
+    ...Typography.sectionTitle,
     fontSize: 22,
-    fontWeight: "700",
-    color: Colors.textPrimary,
-    fontFamily: "Syne_700Bold",
     marginBottom: Spacing.sm,
   },
   heroSub: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-    fontFamily: "DMSans_400Regular",
+    ...Typography.body,
     textAlign: "center",
     lineHeight: 20,
     paddingHorizontal: Spacing.lg,
@@ -328,15 +324,14 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.xs,
   },
   contactLabel: {
-    fontSize: 14,
-    fontWeight: "700",
+    ...Typography.body,
+    fontWeight: "700" as const,
     color: Colors.textPrimary,
-    fontFamily: "DMSans_700Bold",
   },
   contactSub: {
+    ...Typography.caption,
     fontSize: 11,
     color: Colors.textMuted,
-    fontFamily: "DMSans_400Regular",
     textAlign: "center",
   },
 
@@ -348,10 +343,8 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.md,
   },
   sectionTitle: {
+    ...Typography.sectionTitle,
     fontSize: 16,
-    fontWeight: "700",
-    color: Colors.textPrimary,
-    fontFamily: "Syne_700Bold",
   },
   faqItem: {
     backgroundColor: Colors.surface,
@@ -372,17 +365,14 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
   },
   faqQ: {
+    ...Typography.body,
     flex: 1,
-    fontSize: 14,
-    fontWeight: "600",
+    fontWeight: "600" as const,
     color: Colors.textPrimary,
-    fontFamily: "DMSans_600SemiBold",
     lineHeight: 20,
   },
   faqA: {
-    fontSize: 13,
-    color: Colors.textSecondary,
-    fontFamily: "DMSans_400Regular",
+    ...Typography.label,
     lineHeight: 20,
     marginTop: Spacing.md,
     paddingTop: Spacing.md,
@@ -395,12 +385,11 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.lg,
   },
   footerTitle: {
-    fontSize: 13,
-    fontWeight: "600",
+    ...Typography.label,
+    fontWeight: "600" as const,
     color: Colors.textMuted,
     textTransform: "uppercase",
     letterSpacing: 0.5,
-    fontFamily: "DMSans_600SemiBold",
     marginBottom: Spacing.md,
   },
   footerLinks: {
@@ -421,9 +410,8 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.border,
   },
   footerLinkText: {
+    ...Typography.body,
     flex: 1,
-    fontSize: 14,
     color: Colors.textPrimary,
-    fontFamily: "DMSans_400Regular",
   },
 });

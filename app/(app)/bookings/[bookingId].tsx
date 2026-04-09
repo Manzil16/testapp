@@ -546,11 +546,9 @@ const styles = StyleSheet.create({
     ...Shadows.card,
   },
   modalTitle: {
+    ...Typography.sectionTitle,
     fontSize: 17,
-    fontWeight: "700",
-    color: Colors.textPrimary,
     marginBottom: Spacing.sm,
-    fontFamily: "Syne_700Bold",
   },
   modalBody: {
     fontSize: 14,

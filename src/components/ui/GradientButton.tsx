@@ -1,6 +1,6 @@
 import { ActivityIndicator, StyleSheet, Text, type ViewStyle } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { Colors, Radius, Shadows, Spacing } from "@/src/features/shared/theme";
+import { Colors, Radius, Shadows, Spacing, Typography } from "@/src/features/shared/theme";
 import { PressableScale } from "./PressableScale";
 
 interface GradientButtonProps {
@@ -58,11 +58,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.lg,
   },
   label: {
+    ...Typography.cardTitle,
     fontSize: 16,
-    fontWeight: "700",
+    fontWeight: "700" as const,
     color: Colors.textInverse,
     letterSpacing: 0.3,
-    fontFamily: "DMSans_700Bold",
   },
   disabled: {
     opacity: 0.5,

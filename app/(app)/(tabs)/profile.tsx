@@ -55,6 +55,7 @@ export default function ProfileScreen() {
 
   // Password change state
   const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
 
@@ -137,16 +138,21 @@ export default function ProfileScreen() {
   };
 
   const handleChangePassword = async () => {
+    if (!currentPassword) {
+      Alert.alert("Required", "Please enter your current password.");
+      return;
+    }
     if (newPassword.length < 6) {
-      Alert.alert("Invalid Password", "Password must be at least 6 characters.");
+      Alert.alert("Invalid Password", "New password must be at least 6 characters.");
       return;
     }
     if (newPassword !== confirmNewPassword) {
       Alert.alert("Mismatch", "Passwords do not match.");
       return;
     }
-    await settings.changePassword(newPassword);
+    await settings.changePassword(newPassword, currentPassword);
     setShowPasswordModal(false);
+    setCurrentPassword("");
     setNewPassword("");
     setConfirmNewPassword("");
   };
@@ -355,6 +361,7 @@ export default function ProfileScreen() {
               {/* Change Password */}
               <PressableScale
                 onPress={() => {
+                  setCurrentPassword("");
                   setNewPassword("");
                   setConfirmNewPassword("");
                   setShowPasswordModal(!showPasswordModal);
@@ -372,6 +379,15 @@ export default function ProfileScreen() {
 
               {showPasswordModal && (
                 <View style={styles.inlineForm}>
+                  <TextInput
+                    style={styles.inlineInput}
+                    placeholder="Current password"
+                    placeholderTextColor={Colors.textMuted}
+                    secureTextEntry
+                    value={currentPassword}
+                    onChangeText={setCurrentPassword}
+                    autoCapitalize="none"
+                  />
                   <TextInput
                     style={styles.inlineInput}
                     placeholder="New password"
@@ -507,11 +523,10 @@ const styles = StyleSheet.create({
     borderColor: "rgba(0,0,0,0.3)",
   },
   profileName: {
+    ...Typography.sectionTitle,
     fontSize: 22,
-    fontWeight: "700",
     color: Colors.textInverse,
     marginBottom: Spacing.xs,
-    fontFamily: "Syne_700Bold",
   },
 
   // Stats
@@ -529,10 +544,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   statValue: {
+    ...Typography.sectionTitle,
     fontSize: 20,
-    fontWeight: "700",
-    color: "#FFFFFF",
-    fontFamily: "Syne_700Bold",
+    color: Colors.textInverse,
   },
   statLabel: {
     fontSize: 10,
@@ -571,27 +585,24 @@ const styles = StyleSheet.create({
     opacity: 0.45,
   },
   achievementLabel: {
-    fontSize: 10,
-    fontWeight: "600",
+    ...Typography.badge,
     color: Colors.textSecondary,
     textAlign: "center",
-    fontFamily: "DMSans_600SemiBold",
   },
   achievementProgress: {
+    ...Typography.caption,
     fontSize: 9,
-    fontWeight: "500",
-    color: Colors.textMuted,
+    fontWeight: "500" as const,
     textAlign: "center",
     marginTop: 2,
-    fontFamily: "DMSans_500Medium",
   },
   achievementEarned: {
+    ...Typography.caption,
     fontSize: 9,
-    fontWeight: "600",
+    fontWeight: "600" as const,
     color: Colors.accent,
     textAlign: "center",
     marginTop: 2,
-    fontFamily: "DMSans_600SemiBold",
   },
 
   // Form
@@ -599,11 +610,9 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.lg,
   },
   sectionLabel: {
+    ...Typography.sectionTitle,
     fontSize: 16,
-    fontWeight: "700",
-    color: Colors.textPrimary,
     marginBottom: Spacing.lg,
-    fontFamily: "Syne_700Bold",
   },
   // Settings
   settingsSection: {
@@ -618,16 +627,14 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.border,
   },
   settingsLabel: {
+    ...Typography.body,
     flex: 1,
-    fontSize: 14,
-    fontWeight: "500",
+    fontWeight: "500" as const,
     color: Colors.textPrimary,
-    fontFamily: "DMSans_500Medium",
   },
   settingsTrailing: {
-    fontSize: 13,
+    ...Typography.label,
     color: Colors.textMuted,
-    fontFamily: "DMSans_400Regular",
   },
 
   // Currency picker
@@ -663,6 +670,7 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
   },
   inlineInput: {
+    ...Typography.body,
     backgroundColor: Colors.surfaceAlt,
     borderRadius: Radius.input,
     borderWidth: 1,
@@ -670,8 +678,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.md,
     color: Colors.textPrimary,
-    fontSize: 14,
-    fontFamily: "DMSans_400Regular",
   },
 
   // Account Actions
@@ -688,10 +694,10 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.sm,
   },
   logoutText: {
+    ...Typography.label,
     fontSize: 15,
-    fontWeight: "600",
+    fontWeight: "600" as const,
     color: Colors.error,
-    fontFamily: "DMSans_600SemiBold",
   },
   deleteBtn: {
     flexDirection: "row",
@@ -704,10 +710,9 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.md,
   },
   deleteText: {
+    ...Typography.label,
     fontSize: 15,
-    fontWeight: "500",
     color: Colors.textMuted,
-    fontFamily: "DMSans_500Medium",
   },
 
   // Delete confirmation
@@ -715,11 +720,10 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.lg,
   },
   deleteConfirmTitle: {
+    ...Typography.sectionTitle,
     fontSize: 16,
-    fontWeight: "700",
     color: Colors.error,
     marginBottom: Spacing.sm,
-    fontFamily: "Syne_700Bold",
   },
   deleteConfirmBody: {
     ...Typography.body,
@@ -738,10 +742,9 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surfaceAlt,
   },
   deleteConfirmCancelText: {
-    fontSize: 14,
-    fontWeight: "600",
+    ...Typography.label,
+    fontWeight: "600" as const,
     color: Colors.textSecondary,
-    fontFamily: "DMSans_600SemiBold",
   },
   deleteConfirmBtn: {
     flex: 1,
@@ -754,10 +757,9 @@ const styles = StyleSheet.create({
     opacity: 0.4,
   },
   deleteConfirmBtnText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#FFFFFF",
-    fontFamily: "DMSans_600SemiBold",
+    ...Typography.label,
+    fontWeight: "600" as const,
+    color: Colors.textInverse,
   },
 
   // Version
