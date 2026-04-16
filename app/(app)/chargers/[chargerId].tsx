@@ -65,7 +65,10 @@ export default function ChargerDetailRoute() {
   // Fetch host profile for host section
   const hostProfileQuery = useQuery({
     queryKey: ["host-profile", data.charger?.hostUserId],
-    queryFn: () => getUserProfile(data.charger!.hostUserId),
+    queryFn: async () => {
+      if (!data.charger?.hostUserId) return null;
+      return getUserProfile(data.charger.hostUserId);
+    },
     enabled: !!data.charger?.hostUserId,
   });
   const hostProfile = hostProfileQuery.data;
@@ -76,7 +79,7 @@ export default function ChargerDetailRoute() {
     queryFn: () => listVehiclesByUser(userId!),
     enabled: Boolean(userId),
   });
-  const vehicleMaxKwh = vehiclesQuery.data?.[0]?.batteryCapacityKwh ?? 120;
+  const vehicleMaxKwh = vehiclesQuery.data?.[0]?.batteryCapacityKWh ?? 120;
 
   const [startDate, setStartDate] = useState(() => new Date(Date.now() + AppConfig.BOOKING_DEFAULTS.defaultDurationHours * 3600000));
   const [endDate, setEndDate] = useState(() => new Date(Date.now() + 2 * AppConfig.BOOKING_DEFAULTS.defaultDurationHours * 3600000));
@@ -306,8 +309,8 @@ export default function ChargerDetailRoute() {
           <PremiumCard style={styles.mainCard}>
             <SectionTitle title="What this charger offers" topSpacing={Spacing.xs} />
             <View style={styles.amenitiesGrid}>
-              {charger.amenities.length ? (
-                charger.amenities.map((amenity) => (
+              {(charger.amenities ?? []).length ? (
+                (charger.amenities ?? []).map((amenity) => (
                   <View key={amenity} style={styles.amenityItem}>
                     <Ionicons
                       name={getAmenityIcon(amenity)}
@@ -370,13 +373,13 @@ export default function ChargerDetailRoute() {
               <SectionTitle title="Your Active Booking" topSpacing={Spacing.xs} />
               <View style={styles.activeBookingBanner}>
                 <Ionicons
-                  name={activeBooking.status === "in_progress" ? "flash" : activeBooking.status === "approved" ? "checkmark-circle" : "time"}
+                  name={activeBooking.status === "active" ? "flash" : activeBooking.status === "approved" ? "checkmark-circle" : "time"}
                   size={24}
-                  color={activeBooking.status === "in_progress" ? Colors.warning : activeBooking.status === "approved" ? Colors.success : Colors.primary}
+                  color={activeBooking.status === "active" ? Colors.warning : activeBooking.status === "approved" ? Colors.success : Colors.primary}
                 />
                 <View style={{ flex: 1 }}>
                   <Text style={Typography.cardTitle}>
-                    {activeBooking.status === "in_progress" ? "Charging In Progress" : activeBooking.status === "approved" ? "Booking Approved" : "Awaiting Host Approval"}
+                    {activeBooking.status === "active" ? "Charging In Progress" : activeBooking.status === "approved" ? "Booking Approved" : "Awaiting Host Approval"}
                   </Text>
                   <Text style={Typography.caption}>
                     {new Date(activeBooking.startTimeIso).toLocaleString()} – {new Date(activeBooking.endTimeIso).toLocaleTimeString()}
@@ -387,7 +390,7 @@ export default function ChargerDetailRoute() {
                 </View>
                 <InfoPill
                   label={activeBooking.status.replace("_", " ")}
-                  variant={activeBooking.status === "in_progress" ? "warning" : activeBooking.status === "approved" ? "success" : "primary"}
+                  variant={activeBooking.status === "active" ? "warning" : activeBooking.status === "approved" ? "success" : "primary"}
                 />
               </View>
             </PremiumCard>

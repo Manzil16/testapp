@@ -47,11 +47,16 @@ import {
   setupPaymentMethod,
   createConnectAccount,
   getConnectAccountStatus,
+  verifyPaymentMethodSetup,
   isStripeNotConfiguredError,
 } from "@/src/services/stripeService";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 type Phase = "idle" | "opening" | "checking" | "success";
+
+// Ref guard prevents the AppState listener and the explicit post-browser
+// check from both calling refreshSetupStatus simultaneously.
+
 
 // ─── Content per role ────────────────────────────────────────────────────────
 
@@ -101,21 +106,24 @@ export default function OnboardingScreen() {
   const [gate, setGate] = useState<VerificationGate | null>(null);
   const [gateLoading, setGateLoading] = useState(true);
   const [phase, setPhase] = useState<Phase>("idle");
+  const isCheckingRef = useRef(false);
 
   // Stripe credentials modal (demo safety net — shown when STRIPE_SECRET_KEY is not set)
   const [showCredentialsModal, setShowCredentialsModal] = useState(false);
   const [credPublishableKey, setCredPublishableKey] = useState("");
-  const [credSecretKey, setCredSecretKey] = useState("");
   const pendingRetry = useRef<(() => void) | null>(null);
 
   // ── Check whether user already completed this step ────────────────────────
-  const fetchGate = useCallback(async () => {
-    if (!profile?.id) return;
+  const fetchGate = useCallback(async (): Promise<VerificationGate | null> => {
+    if (!profile?.id) return null;
     try {
       const g = await getVerificationGate(profile.id);
       setGate(g);
+      return g;
     } catch {
       // gate table may not exist yet — treat as not set up
+      setGate(null);
+      return null;
     } finally {
       setGateLoading(false);
     }
@@ -130,19 +138,42 @@ export default function OnboardingScreen() {
     ? gate?.stripeOnboarded === true
     : gate?.paymentMethodAdded === true;
 
+  const refreshSetupStatus = useCallback(async (): Promise<boolean> => {
+    if (!profile?.id) return false;
+
+    if (isHost) {
+      const status = await getConnectAccountStatus(profile.id);
+      const refreshedGate = await fetchGate();
+      return status.connected && (refreshedGate?.stripeOnboarded ?? false);
+    }
+
+    const paymentStatus = await verifyPaymentMethodSetup(profile.id);
+    const refreshedGate = await fetchGate();
+    return paymentStatus.paymentMethodAdded || refreshedGate?.paymentMethodAdded === true;
+  }, [fetchGate, isHost, profile?.id]);
+
   // ── Re-check gate when app returns to foreground (after browser closes) ───
   useEffect(() => {
     if (phase !== "opening") return;
 
     const sub = AppState.addEventListener("change", async (nextState: AppStateStatus) => {
       if (nextState === "active") {
+        // Skip if the explicit post-browser call is already running
+        if (isCheckingRef.current) return;
+        isCheckingRef.current = true;
         setPhase("checking");
-        await fetchGate();
-        setPhase("success");
+        try {
+          const confirmed = await refreshSetupStatus();
+          setPhase(confirmed ? "success" : "idle");
+        } catch {
+          setPhase("idle");
+        } finally {
+          isCheckingRef.current = false;
+        }
       }
     });
     return () => sub.remove();
-  }, [phase, fetchGate]);
+  }, [phase, refreshSetupStatus]);
 
   // Auto-detect success from gate after checking
   useEffect(() => {
@@ -181,10 +212,29 @@ export default function OnboardingScreen() {
         toolbarColor: Colors.accent,
       });
 
-      // After browser is dismissed, re-check gate (AppState listener also fires)
+      // After browser is dismissed, re-check gate. Guard so the AppState
+      // listener (which fires at the same time) doesn't duplicate the call.
+      isCheckingRef.current = true;
       setPhase("checking");
-      await fetchGate();
-      setPhase("success");
+      let confirmed = false;
+      try {
+        confirmed = await refreshSetupStatus();
+      } finally {
+        isCheckingRef.current = false;
+      }
+
+      if (confirmed) {
+        setPhase("success");
+        return;
+      }
+
+      setPhase("idle");
+      Alert.alert(
+        isHost ? "Stripe setup incomplete" : "Card setup incomplete",
+        isHost
+          ? "Finish all required Stripe onboarding steps, then return to the app."
+          : "Your card was not saved yet. Please complete the Stripe flow and try again."
+      );
     } catch (err) {
       setPhase("idle");
       if (isStripeNotConfiguredError(err)) {
@@ -196,33 +246,33 @@ export default function OnboardingScreen() {
       const msg = err instanceof Error ? err.message : "Could not open setup page";
       Alert.alert("Setup error", msg);
     }
-  }, [profile?.id, isHost, fetchGate]);
+  }, [profile?.id, isHost, refreshSetupStatus]);
 
   // ── Save demo credentials and retry ──────────────────────────────────────
   const handleCredentialsSubmit = useCallback(async () => {
-    if (!credPublishableKey.trim() || !credSecretKey.trim()) {
-      Alert.alert("Missing credentials", "Enter both the publishable key and secret key.");
+    if (!credPublishableKey.trim()) {
+      Alert.alert("Missing credentials", "Enter your Stripe publishable key.");
       return;
     }
     try {
       await AsyncStorage.setItem("stripe_demo_publishable_key", credPublishableKey.trim());
-      await AsyncStorage.setItem("stripe_demo_secret_key", credSecretKey.trim());
     } catch {
       // AsyncStorage failure is non-fatal for the demo
     }
     setShowCredentialsModal(false);
     setCredPublishableKey("");
-    setCredSecretKey("");
     // Retry the original action
     if (pendingRetry.current) {
       pendingRetry.current();
       pendingRetry.current = null;
     }
-  }, [credPublishableKey, credSecretKey]);
+  }, [credPublishableKey]);
 
   // ── Render helpers ────────────────────────────────────────────────────────
   const isLoading  = gateLoading || phase === "opening" || phase === "checking";
-  const showSuccess = !gateLoading && (alreadyDone || phase === "success");
+  // Show success when gate confirms it (returning users) OR when setup was
+  // completed in this session (phase === "success" before gate refreshes).
+  const showSuccess = (!gateLoading && alreadyDone) || phase === "success";
   const ctaLabel   = phase === "opening"
     ? "Opening Stripe…"
     : phase === "checking"
@@ -344,7 +394,7 @@ export default function OnboardingScreen() {
               </Text>
             </View>
             <Text style={[Typography.body, styles.modalSubtitle]}>
-              Stripe is not configured in this environment. Enter your test keys to continue.
+              Stripe is not configured in this environment. Enter your publishable key (pk_test_…) to continue.
             </Text>
             <TextInput
               style={styles.credInput}
@@ -354,16 +404,6 @@ export default function OnboardingScreen() {
               onChangeText={setCredPublishableKey}
               autoCapitalize="none"
               autoCorrect={false}
-            />
-            <TextInput
-              style={styles.credInput}
-              placeholder="Secret key (sk_test_...)"
-              placeholderTextColor={Colors.textMuted}
-              value={credSecretKey}
-              onChangeText={setCredSecretKey}
-              autoCapitalize="none"
-              autoCorrect={false}
-              secureTextEntry
             />
             <View style={styles.modalActions}>
               <Pressable

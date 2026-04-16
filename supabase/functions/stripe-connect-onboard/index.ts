@@ -1,98 +1,121 @@
-// Supabase Edge Function: Stripe Connect Onboarding
-// Creates a Stripe Connect Express account for a host and returns an onboarding link.
-
-import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
-import Stripe from "https://esm.sh/stripe@14.10.0?target=deno";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
+import Stripe from "npm:stripe@14.10.0";
+import { createClient } from "npm:@supabase/supabase-js@2.39.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!, {
-  apiVersion: "2023-10-16",
-});
+const jsonHeaders = {
+  ...corsHeaders,
+  "Content-Type": "application/json",
+};
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const supabaseServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-serve(async (req) => {
+function jsonResponse(payload: unknown, status = 200): Response {
+  return new Response(JSON.stringify(payload), { status, headers: jsonHeaders });
+}
+
+function buildFunctionUrl(path: string, params: Record<string, string>): string {
+  const url = new URL(`${supabaseUrl}/functions/v1/${path}`);
+  for (const [key, value] of Object.entries(params)) {
+    url.searchParams.set(key, value);
+  }
+  return url.toString();
+}
+
+async function resolveHostUserId(req: Request): Promise<string | null> {
+  if (req.method === "GET") {
+    const url = new URL(req.url);
+    return url.searchParams.get("hostUserId");
+  }
+
+  const body = await req.json().catch(() => ({}));
+  return typeof body.hostUserId === "string" ? body.hostUserId : null;
+}
+
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
 
+  const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
+  if (!stripeKey) {
+    return jsonResponse({ stripeNotConfigured: true });
+  }
+
   try {
-    const { hostUserId } = await req.json();
+    const hostUserId = await resolveHostUserId(req);
 
     if (!hostUserId) {
-      return new Response(JSON.stringify({ error: "hostUserId is required" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonResponse({ error: "hostUserId is required" }, 400);
     }
 
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const stripe = new Stripe(stripeKey, { apiVersion: "2023-10-16" });
+    const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
 
-    // Check if host already has a Stripe account
     const { data: profile } = await supabase
       .from("profiles")
       .select("stripe_account_id, email, display_name")
       .eq("id", hostUserId)
       .single();
 
-    let accountId = profile?.stripe_account_id;
+    let accountId = profile?.stripe_account_id?.trim() ?? "";
 
     if (!accountId) {
-      // Create new Stripe Connect Express account
-      const account = await stripe.accounts.create(
-        {
-          type: "express",
-          country: "AU",
-          email: profile?.email,
-          business_profile: {
-            name: profile?.display_name || undefined,
-            product_description: "EV charging station host on VehicleGrid",
-          },
-          capabilities: {
-            card_payments: { requested: true },
-            transfers: { requested: true },
-          },
+      const account = await stripe.accounts.create({
+        type: "express",
+        country: "AU",
+        email: profile?.email ?? undefined,
+        business_profile: {
+          name: profile?.display_name || undefined,
+          product_description: "EV charging station host on VehicleGrid",
         },
-        { idempotencyKey: `account_create_${hostUserId}` }
-      );
-
+        capabilities: {
+          card_payments: { requested: true },
+          transfers: { requested: true },
+        },
+      });
       accountId = account.id;
 
-      // Store the Stripe account ID on the profile
-      await supabase
-        .from("profiles")
-        .update({ stripe_account_id: accountId })
-        .eq("id", hostUserId);
+      if (profile) {
+        const { error: updateError } = await supabase
+          .from("profiles")
+          .update({ stripe_account_id: accountId })
+          .eq("id", hostUserId);
+
+        if (updateError) {
+          return jsonResponse({ error: updateError.message }, 500);
+        }
+      }
     }
 
-    // Create an account link for onboarding
-    const accountLink = await stripe.accountLinks.create(
-      {
-        account: accountId,
-        refresh_url: `${supabaseUrl}/functions/v1/stripe-connect-onboard?refresh=true`,
-        return_url: `${supabaseUrl}/functions/v1/stripe-account-status?hostUserId=${hostUserId}`,
-        type: "account_onboarding",
-      },
-      { idempotencyKey: `account_link_${accountId}` }
-    );
+    const refreshUrl = buildFunctionUrl("stripe-connect-onboard", {
+      refresh: "true",
+      hostUserId,
+    });
+    const returnUrl = buildFunctionUrl("stripe-account-status", {
+      hostUserId,
+    });
 
-    return new Response(
-      JSON.stringify({
-        accountId,
-        onboardingUrl: accountLink.url,
-      }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    const accountLink = await stripe.accountLinks.create({
+      account: accountId,
+      refresh_url: refreshUrl,
+      return_url: returnUrl,
+      type: "account_onboarding",
+    });
+
+    if (req.method === "GET" && new URL(req.url).searchParams.get("refresh") === "true") {
+      return Response.redirect(accountLink.url, 303);
+    }
+
+    return jsonResponse({ accountId, onboardingUrl: accountLink.url });
   } catch (err) {
-    return new Response(
-      JSON.stringify({ error: err.message || "Failed to create Stripe account" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    return jsonResponse(
+      { error: err instanceof Error ? err.message : "Failed to create Stripe account" },
+      500
     );
   }
 });

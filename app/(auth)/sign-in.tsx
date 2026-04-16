@@ -24,6 +24,7 @@ import {
   GOOGLE_ANDROID_CLIENT_ID,
   GOOGLE_IOS_CLIENT_ID,
   GOOGLE_WEB_CLIENT_ID,
+  validateGoogleAuthConfig,
 } from "@/src/features/auth/google-auth.config";
 
 WebBrowser.maybeCompleteAuthSession();
@@ -56,6 +57,7 @@ export default function SignInScreen() {
   const handleGoogleCredential = useCallback(async (idToken: string) => {
     try {
       setGoogleLoading(true);
+      validateGoogleAuthConfig();
       await loginWithGoogle(idToken);
     } catch (error) {
       const msg = error instanceof Error ? error.message : "Google sign-in failed.";

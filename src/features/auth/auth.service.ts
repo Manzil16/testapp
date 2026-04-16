@@ -54,6 +54,7 @@ export async function signUpWithEmail(
 
   // Upsert the profile with role and display name — handles both
   // the case where the DB trigger created it and where it didn't.
+  // Explicitly set is_driver/is_host/is_admin so role-based navigation works immediately.
   if (data.user) {
     if (__DEV__) console.log("[auth.service] upserting profile for:", data.user.id);
     await supabase
@@ -63,6 +64,9 @@ export async function signUpWithEmail(
         email: normalizedEmail,
         display_name: normalizedName,
         role,
+        is_driver: role === "driver" || role === "admin",
+        is_host: role === "host" || role === "admin",
+        is_admin: role === "admin",
       });
   }
 

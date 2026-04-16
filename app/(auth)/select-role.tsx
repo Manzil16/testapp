@@ -10,15 +10,15 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { PrimaryCTA } from "@/src/components/ui/PrimaryCTA";
-import { Colors, Radius, Shadows, Spacing, Typography } from "@/src/features/shared/theme";
+import { Ionicons } from "@expo/vector-icons";
+import { PrimaryCTA, Colors, Radius, Shadows, Spacing, Typography } from "@/src/components";
 import { useAuth } from "@/src/features/auth/auth-context";
 import type { AppRole } from "@/src/features/users/user.types";
 
 interface RoleOption {
   id: AppRole;
   label: string;
-  icon: string;
+  icon: keyof typeof Ionicons.glyphMap;
   headline: string;
   bullets: string[];
   accentColor: string;
@@ -29,29 +29,20 @@ const ROLES: RoleOption[] = [
   {
     id: "driver",
     label: "Driver",
-    icon: "🚗",
+    icon: "car-sport",
     headline: "Find & book EV chargers",
     bullets: ["Discover nearby chargers", "Book sessions in advance", "Track trips & energy use"],
-    accentColor: Colors.primary,
-    accentBg: Colors.primaryLight,
+    accentColor: Colors.accent,
+    accentBg: Colors.accentLight,
   },
   {
     id: "host",
     label: "Host",
-    icon: "🏠",
+    icon: "home",
     headline: "List your charger & earn",
     bullets: ["Share your home charger", "Set your own schedule", "Earn per kWh delivered"],
     accentColor: Colors.info,
     accentBg: Colors.infoLight,
-  },
-  {
-    id: "admin",
-    label: "Admin",
-    icon: "🛡️",
-    headline: "Manage the platform",
-    bullets: ["Verify charger listings", "Resolve disputes & reports", "Access platform analytics"],
-    accentColor: Colors.warning,
-    accentBg: Colors.warningLight,
   },
 ];
 
@@ -93,7 +84,7 @@ export default function SelectRoleScreen() {
       <View style={styles.container}>
         <View style={styles.header}>
           <View style={styles.logoCircle}>
-            <Text style={styles.logoEmoji}>⚡</Text>
+            <Ionicons name="flash" size={28} color="#FFFFFF" />
           </View>
           <Text style={styles.title}>Welcome to VehicleGrid</Text>
           <Text style={styles.subtitle}>How will you use the platform?</Text>
@@ -114,7 +105,7 @@ export default function SelectRoleScreen() {
               >
                 <View style={styles.roleCardHeader}>
                   <View style={[styles.roleIconCircle, { backgroundColor: role.accentBg }]}>
-                    <Text style={styles.roleIcon}>{role.icon}</Text>
+                    <Ionicons name={role.icon} size={22} color={role.accentColor} />
                   </View>
                   <View style={styles.roleCardText}>
                     <Text style={styles.roleLabel}>{role.label}</Text>
@@ -183,12 +174,10 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.md,
     ...Shadows.button,
   },
-  logoEmoji: {
-    fontSize: 28,
-  },
   title: {
     fontSize: 24,
     fontWeight: "800",
+    fontFamily: "Syne_800ExtraBold",
     color: Colors.textPrimary,
     letterSpacing: -0.3,
     marginBottom: 4,
@@ -219,9 +208,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginRight: Spacing.md,
-  },
-  roleIcon: {
-    fontSize: 22,
   },
   roleCardText: {
     flex: 1,

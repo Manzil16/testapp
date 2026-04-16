@@ -1,7 +1,53 @@
+import { supabase } from "../lib/supabase";
+
 export interface RouteData {
   distanceKm: number;
   durationMinutes: number;
   polyline: string;
+}
+
+export interface RoutePlanInput {
+  originLat: number;
+  originLng: number;
+  destLat: number;
+  destLng: number;
+  vehicleId: string;
+  currentSocPercent: number;
+  connectorType?: string;
+}
+
+export interface RecommendedStop {
+  chargerId: string;
+  name: string;
+  address: string;
+  latitude: number;
+  longitude: number;
+  maxPowerKw: number;
+  pricePerKwh: number;
+  source: "vehiclegrid" | "public";
+  connectorTypes: string[];
+  distanceFromRouteKm: number;
+  fractionAlongRoute: number;
+  socAtArrivalPercent: number;
+  socAfterChargePercent: number;
+  estimatedChargeMinutes: number;
+  kwhToAdd: number;
+  score: number;
+}
+
+export interface RoutePlanResult {
+  route: RouteData;
+  energyEstimate: {
+    energyNeededKwh: number;
+    efficiencyKwhPer100km: number;
+    batteryCapacityKwh: number;
+  };
+  currentSocPercent: number;
+  arrivalSocPercent: number;
+  needsChargingStop: boolean;
+  recommendedStops: RecommendedStop[];
+  vehicleName?: string;
+  connectorType?: string;
 }
 
 export type RoutingErrorCode =
@@ -21,18 +67,48 @@ export interface RoutingSuccess extends RouteData {
 
 export type RoutingResult = RoutingSuccess | RoutingFailure;
 
+/**
+ * Full trip plan via the route-plan edge function.
+ * Handles OSRM routing, energy calculation, SoC estimation, and charger ranking — all backend.
+ */
+export async function getRoutePlan(input: RoutePlanInput): Promise<RoutePlanResult> {
+  const { data, error } = await supabase.functions.invoke("route-plan", { body: input });
+  if (error) throw new Error(error.message || "Route planning failed");
+  if (data?.error) throw new Error(String(data.error));
+  return data as RoutePlanResult;
+}
+
+/**
+ * Simple route fetch — calls the route-plan edge function with a placeholder vehicleId.
+ * Use getRoutePlan() directly when vehicle + SoC context is available.
+ */
 export async function getRoute(
   from: { latitude: number; longitude: number },
   to: { latitude: number; longitude: number },
-  signal?: AbortSignal
+  options?: { vehicleId?: string; currentSocPercent?: number; signal?: AbortSignal }
 ): Promise<RouteData> {
-  const result = await getRouteData(from.latitude, from.longitude, to.latitude, to.longitude, signal);
-  if (!result.ok) {
-    throw new Error(result.message);
+  // If no vehicleId is provided, fall back to calling OSRM directly (map display only)
+  if (!options?.vehicleId) {
+    const result = await getRouteData(from.latitude, from.longitude, to.latitude, to.longitude, options?.signal);
+    if (!result.ok) throw new Error(result.message);
+    return { distanceKm: result.distanceKm, durationMinutes: result.durationMinutes, polyline: result.polyline };
   }
-  return { distanceKm: result.distanceKm, durationMinutes: result.durationMinutes, polyline: result.polyline };
+
+  const plan = await getRoutePlan({
+    originLat: from.latitude,
+    originLng: from.longitude,
+    destLat: to.latitude,
+    destLng: to.longitude,
+    vehicleId: options.vehicleId,
+    currentSocPercent: Math.min(100, Math.max(0, options.currentSocPercent ?? 80)),
+  });
+  return plan.route;
 }
 
+/**
+ * Low-level OSRM call — used as fallback when no vehicle context is available.
+ * Prefer getRoutePlan() for trip planning screens.
+ */
 export async function getRouteData(
   fromLat: number,
   fromLng: number,

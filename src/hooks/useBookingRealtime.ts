@@ -1,11 +1,17 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase";
 
 /**
  * Subscribes to realtime Postgres changes on a specific booking.
  * Replaces 30-second polling with instant push updates.
+ *
+ * onUpdate is stored in a ref so that a new function reference on the
+ * parent's re-render never tears down and re-creates the subscription.
  */
 export function useBookingRealtime(bookingId: string | undefined, onUpdate: () => void) {
+  const onUpdateRef = useRef(onUpdate);
+  onUpdateRef.current = onUpdate;
+
   useEffect(() => {
     if (!bookingId) return;
 
@@ -19,14 +25,14 @@ export function useBookingRealtime(bookingId: string | undefined, onUpdate: () =
           table: "bookings",
           filter: `id=eq.${bookingId}`,
         },
-        onUpdate
+        () => onUpdateRef.current()
       )
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [bookingId, onUpdate]);
+  }, [bookingId]); // stable: only re-subscribe when bookingId changes
 }
 
 /**
@@ -34,6 +40,9 @@ export function useBookingRealtime(bookingId: string | undefined, onUpdate: () =
  * Fires onUpdate whenever any of their bookings change status.
  */
 export function useUserBookingsRealtime(userId: string | undefined, onUpdate: () => void) {
+  const onUpdateRef = useRef(onUpdate);
+  onUpdateRef.current = onUpdate;
+
   useEffect(() => {
     if (!userId) return;
 
@@ -47,7 +56,7 @@ export function useUserBookingsRealtime(userId: string | undefined, onUpdate: ()
           table: "bookings",
           filter: `driver_id=eq.${userId}`,
         },
-        onUpdate
+        () => onUpdateRef.current()
       )
       .subscribe();
 
@@ -61,7 +70,7 @@ export function useUserBookingsRealtime(userId: string | undefined, onUpdate: ()
           table: "bookings",
           filter: `host_id=eq.${userId}`,
         },
-        onUpdate
+        () => onUpdateRef.current()
       )
       .subscribe();
 
@@ -69,5 +78,5 @@ export function useUserBookingsRealtime(userId: string | undefined, onUpdate: ()
       supabase.removeChannel(driverChannel);
       supabase.removeChannel(hostChannel);
     };
-  }, [userId, onUpdate]);
+  }, [userId]); // stable: only re-subscribe when userId changes
 }

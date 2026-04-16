@@ -1,11 +1,11 @@
 import { type ReactNode } from "react";
-import { StyleSheet, View, type ViewStyle } from "react-native";
+import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Colors, Radius, Shadows } from "@/src/features/shared/theme";
 
 interface PremiumCardProps {
   children: ReactNode;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
   glowColor?: string;
   noPadding?: boolean;
 }

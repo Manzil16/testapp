@@ -21,7 +21,7 @@ export interface Booking {
   platformFee: number;
   note: string;
   status: BookingStatus;
-  arrivalSignal: "en_route" | "arrived" | "charging" | "departed";
+  arrivalSignal: "en_route" | "arrived" | "charging" | "departed" | null;
   expiresAtIso?: string;
   graceExpiresAtIso?: string;
   actualKWh?: number;

@@ -9,6 +9,10 @@ export interface Vehicle {
   maxRangeKm: number;
   efficiencyKWhPer100Km: number;
   defaultReservePercent: number;
+  connectorType: string;
+  maxChargePowerKw: number;
+  realWorldEfficiencyKWhPer100Km: number | null;
+  calibrationStatus: "uncalibrated" | "city" | "highway" | "full";
   createdAtIso: string;
   updatedAtIso: string;
 }
@@ -22,4 +26,6 @@ export interface UpsertVehicleInput {
   maxRangeKm: number;
   efficiencyKWhPer100Km: number;
   defaultReservePercent: number;
+  connectorType: string;
+  maxChargePowerKw: number;
 }

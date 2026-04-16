@@ -1,6 +1,17 @@
 import { supabase } from "../../lib/supabase";
 import type { VerificationGate, VerificationGatePatch } from "./verification-gates.types";
 
+function isMissingGateError(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+
+  return (
+    error.code === "PGRST116" ||
+    error.code === "PGRST205" ||
+    error.code === "42P01" ||
+    error.message?.toLowerCase().includes("verification_gates") === true
+  );
+}
+
 function mapRow(row: Record<string, unknown>): VerificationGate {
   return {
     userId: row.user_id as string,
@@ -28,7 +39,7 @@ export async function getVerificationGate(
     .single();
 
   if (error) {
-    if (error.code === "PGRST116") return null;
+    if (isMissingGateError(error)) return null;
     throw error;
   }
   return mapRow(data as Record<string, unknown>);

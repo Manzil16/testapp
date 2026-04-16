@@ -86,8 +86,10 @@ export function useSettings() {
   }, []);
 
   // ── Change Password ──
+  // Email/password users must re-authenticate with currentPassword before changing.
+  // OAuth users (Google, Apple, etc.) have no stored password, so we skip re-auth.
   const changePassword = useCallback(
-    async (newPassword: string) => {
+    async (newPassword: string, currentPassword?: string) => {
       if (!user) throw new Error("Not authenticated");
       if (newPassword.length < 6) {
         Alert.alert("Invalid Password", "Password must be at least 6 characters.");
@@ -95,6 +97,31 @@ export function useSettings() {
       }
       setLoadingPassword(true);
       try {
+        // Detect auth provider to decide whether re-auth is needed.
+        const { data: { user: authUser } } = await supabase.auth.getUser();
+        const provider = (authUser?.app_metadata?.provider as string | undefined) ?? "email";
+        const isEmailUser = provider === "email";
+
+        if (isEmailUser) {
+          if (!currentPassword) {
+            Alert.alert("Required", "Please enter your current password to continue.");
+            return;
+          }
+          const email = user.email;
+          if (!email) {
+            Alert.alert("Error", "Could not verify your identity. Please sign out and back in.");
+            return;
+          }
+          const { error: signInError } = await supabase.auth.signInWithPassword({
+            email,
+            password: currentPassword,
+          });
+          if (signInError) {
+            Alert.alert("Incorrect Password", "Your current password is incorrect. Please try again.");
+            return;
+          }
+        }
+
         const { error } = await supabase.auth.updateUser({ password: newPassword });
         if (error) {
           if (error.message.includes("same")) {
@@ -118,7 +145,7 @@ export function useSettings() {
   const signOut = useCallback(async () => {
     try {
       await logout();
-      router.replace("/(auth)/sign-in" as any);
+      router.replace({ pathname: "/(auth)/sign-in" });
     } catch {
       const message = "Sign out failed, please try again";
       if (Platform.OS === "android") {
@@ -152,7 +179,7 @@ export function useSettings() {
 
       // Sign out (logout handles: auth.signOut → AsyncStorage.clear → reset context)
       await logout();
-      router.replace("/(auth)/sign-in" as any);
+      router.replace({ pathname: "/(auth)/sign-in" });
     } catch {
       Alert.alert("Delete Failed", "Could not delete your account. Please try again or contact support.");
     } finally {

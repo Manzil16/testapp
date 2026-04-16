@@ -42,8 +42,8 @@ export function useChargerStats(chargerId: string) {
       let avgSessionMinutes = 0;
       if (sessions && sessions.length > 0) {
         const durations = sessions.map((s) => {
-          const start = new Date(s.session_started_at).getTime();
-          const end = new Date(s.session_ended_at).getTime();
+          const start = new Date(s.session_started_at!).getTime();
+          const end = new Date(s.session_ended_at!).getTime();
           return (end - start) / (1000 * 60);
         });
         avgSessionMinutes = Math.round(

@@ -48,7 +48,7 @@ export function useHostBookings(hostUserId?: string) {
       const map: Record<string, Pick<UserProfile, "displayName" | "avatarUrl">> = {};
       for (const row of data ?? []) {
         map[row.id] = {
-          displayName: row.display_name,
+          displayName: row.display_name ?? `Driver ${row.id.slice(0, 6)}`,
           avatarUrl: row.avatar_url ?? undefined,
         };
       }
@@ -70,7 +70,7 @@ export function useHostBookings(hostUserId?: string) {
     const declined: Booking[] = [];
     for (const b of bookings) {
       if (b.status === "requested") pending.push(b);
-      else if (b.status === "approved" || b.status === "in_progress") active.push(b);
+      else if (b.status === "approved" || b.status === "active") active.push(b);
       else if (b.status === "completed") completed.push(b);
       else if (b.status === "declined" || b.status === "cancelled") declined.push(b);
     }
@@ -81,12 +81,19 @@ export function useHostBookings(hostUserId?: string) {
 
   const approveMutation = useMutation({
     mutationFn: async ({ booking, note }: { booking: Booking; note?: string }) => {
-      // Attempt to capture pre-authorized payment — silently skip if PI not capturable (e.g. Expo Go test mode)
+      // Mark payment as authorized — only attempt if a PI exists (won't be set in Expo Go test mode).
       if (booking.stripePaymentIntentId) {
         try {
           await capturePayment(booking.stripePaymentIntentId);
-        } catch {
-          // PI not in capturable state (no card in Expo Go) — proceed with approval anyway
+        } catch (err) {
+          // Re-throw real Stripe errors so the host sees them instead of silently
+          // approving a booking with a broken/expired payment hold.
+          // Only swallow the error when there is genuinely no PI (test mode).
+          const message = err instanceof Error ? err.message : "";
+          const isTestModeGap =
+            message.includes("stripeNotConfigured") ||
+            message.includes("No such payment_intent");
+          if (!isTestModeGap) throw err;
         }
       }
       await updateBookingStatus(booking.id, "approved", note);

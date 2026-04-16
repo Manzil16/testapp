@@ -6,7 +6,7 @@ import { getUserProfile } from "../features/users/user.repository";
 import type { Booking } from "../features/bookings/booking.types";
 import type { Charger } from "../features/chargers/charger.types";
 
-const ACTIVE_STATUSES = new Set(["requested", "approved", "in_progress"]);
+const ACTIVE_STATUSES = new Set(["requested", "approved", "active"]);
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 
@@ -68,7 +68,10 @@ export function useChargerDetail(chargerId?: string, driverUserId?: string) {
   const hostId = chargerQuery.data?.hostUserId;
   const hostQuery = useQuery({
     queryKey: ["profile", hostId],
-    queryFn: () => getUserProfile(hostId!),
+    queryFn: async () => {
+      if (!hostId) return null;
+      return getUserProfile(hostId);
+    },
     enabled: Boolean(hostId),
   });
 
@@ -76,7 +79,8 @@ export function useChargerDetail(chargerId?: string, driverUserId?: string) {
   const driverBookingsQuery = useQuery({
     queryKey: ["bookings", "driver", driverUserId, chargerId],
     queryFn: async () => {
-      const all = await listBookingsByDriver(driverUserId!);
+      if (!driverUserId || !chargerId) return null;
+      const all = await listBookingsByDriver(driverUserId);
       return all.find(
         (b) => b.chargerId === chargerId && ACTIVE_STATUSES.has(b.status)
       ) ?? null;
@@ -93,7 +97,7 @@ export function useChargerDetail(chargerId?: string, driverUserId?: string) {
 
   const bookingMutation = useMutation({
     mutationFn: async (input: RequestBookingInput) => {
-      if (!chargerId || !driverUserId || !chargerQuery.data) {
+      if (!chargerId || !driverUserId || !chargerQuery.data?.hostUserId) {
         throw new Error("Missing charger or user info");
       }
       return createBookingRequest({

@@ -80,6 +80,8 @@ export default function AdminSettingsTabScreen() {
     }
   };
 
+  if (!profile?.isAdmin) return null;
+
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={["bottom"]}>
       <Animated.View style={[{ flex: 1 }, entranceStyle]}>

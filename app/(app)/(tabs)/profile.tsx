@@ -99,7 +99,7 @@ export default function ProfileScreen() {
         displayName: displayName.trim() || profile.displayName,
         phone: phone.trim(),
         preferredReservePercent:
-          profile.role === "driver"
+          profile.isDriver
             ? Math.max(AppConfig.VEHICLE_DEFAULTS.bounds.minReservePercent, Math.min(AppConfig.VEHICLE_DEFAULTS.bounds.maxReservePercent, Number(reservePercent) || AppConfig.VEHICLE_DEFAULTS.reservePercent))
             : undefined,
       });
@@ -262,7 +262,7 @@ export default function ProfileScreen() {
                 leftIcon={<Ionicons name="call-outline" size={16} color={Colors.textMuted} />}
               />
 
-              {profile.role === "driver" ? (
+              {profile.isDriver ? (
                 <InputField
                   label="Preferred Reserve %"
                   value={reservePercent}

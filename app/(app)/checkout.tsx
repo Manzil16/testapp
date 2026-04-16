@@ -62,7 +62,7 @@ export default function CheckoutScreen() {
   const [processing, setProcessing] = useState(false);
 
   const handleAuthorizePayment = useCallback(async () => {
-    if (!user || !params.chargerId || !totalAmount) return;
+    if (!user || !params.chargerId || !params.hostUserId || !totalAmount) return;
 
     setProcessing(true);
     let createdBookingId: string | null = null;
@@ -86,7 +86,7 @@ export default function CheckoutScreen() {
         return;
       }
       if ("unverified" in result) {
-        Alert.alert("Verification required", "Please complete your account verification before booking.");
+        router.replace("/(app)/verification-required" as any);
         return;
       }
       if ("error" in result) {
@@ -99,7 +99,7 @@ export default function CheckoutScreen() {
       // Step 2: Authorise the payment hold via Stripe
       // In production: present PaymentSheet from @stripe/stripe-react-native here.
       const amountCents = Math.round(totalAmount * 100);
-      await createPaymentIntent({
+      const paymentIntent = await createPaymentIntent({
         bookingId: createdBookingId,
         amount: amountCents,
         hostStripeAccountId: params.hostStripeAccountId || "",
@@ -111,13 +111,19 @@ export default function CheckoutScreen() {
           bookingId: createdBookingId,
           chargerName: params.chargerName,
           totalAmount: String(totalAmount),
+          brand: paymentIntent.card?.brand || "",
+          last4: paymentIntent.card?.last4 || "",
         },
       });
     } catch (err) {
       // If the booking was created but payment failed, cancel it immediately so the
       // slot is freed and no orphaned record blocks future bookings.
       if (createdBookingId) {
-        void updateBookingStatus(createdBookingId, "cancelled");
+        try {
+          await updateBookingStatus(createdBookingId, "cancelled");
+        } catch {
+          // Cancellation failed — booking will auto-expire after 24h via expires_at.
+        }
       }
       const message = err instanceof Error ? err.message : "Payment authorization failed";
       Alert.alert("Payment Error", message);

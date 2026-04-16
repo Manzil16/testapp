@@ -6,10 +6,13 @@ import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import {
   AnimatedListItem,
   Avatar,
+  BottomSheet,
   ChargerCardSkeleton,
   EmptyStateCard,
   InfoPill,
+  InputField,
   PressableScale,
+  PrimaryCTA,
   ScreenContainer,
   SegmentedControl,
   Typography,
@@ -29,7 +32,7 @@ const SEGMENT_EMPTY: Record<HostBookingSegment, { icon: string; title: string; m
 };
 
 export default function HostBookingsTabScreen() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const entranceStyle = useEntranceAnimation();
   const userId = useMemo(
     () => user?.id,
@@ -39,9 +42,13 @@ export default function HostBookingsTabScreen() {
   const { data, isLoading, error, refresh, actions } = useHostBookings(userId);
   const { refreshing, onRefresh } = useRefresh(refresh);
   const [segment, setSegment] = useState<HostBookingSegment>("pending");
+  const [completeBooking, setCompleteBooking] = useState<import("@/src/features/bookings").Booking | null>(null);
+  const [actualKwhInput, setActualKwhInput] = useState("");
 
   const segmentData = data.grouped[segment];
   const pendingCount = data.grouped.pending.length;
+
+  if (!profile?.isHost) return null;
 
   return (
     <SafeAreaView style={styles.safe} edges={["bottom"]}>
@@ -214,21 +221,12 @@ export default function HostBookingsTabScreen() {
                               </PressableScale>
                             </>
                           )}
-                          {isActive && item.status === "in_progress" && (
+                          {isActive && item.status === "active" && (
                             <PressableScale
-                              onPress={() =>
-                                Alert.alert(
-                                  "Mark Complete?",
-                                  "This will finalize the session and capture payment based on actual kWh used.",
-                                  [
-                                    { text: "Cancel", style: "cancel" },
-                                    {
-                                      text: "Mark Complete",
-                                      onPress: () => actions.markCompleted(item),
-                                    },
-                                  ]
-                                )
-                              }
+                              onPress={() => {
+                                setActualKwhInput(String(item.estimatedKWh ?? ""));
+                                setCompleteBooking(item);
+                              }}
                               style={styles.completeBtn}
                             >
                               <Ionicons name="checkmark-done" size={16} color={Colors.textInverse} />
@@ -263,6 +261,35 @@ export default function HostBookingsTabScreen() {
           )}
         </ScreenContainer>
       </Animated.View>
+      <BottomSheet
+        visible={Boolean(completeBooking)}
+        onClose={() => setCompleteBooking(null)}
+        title="Confirm session complete"
+        subtitle={completeBooking ? `${data.chargersById[completeBooking.chargerId]?.name ?? "Charger"} · Est. ${completeBooking.estimatedKWh} kWh` : undefined}
+      >
+        <InputField
+          label="Actual kWh delivered"
+          value={actualKwhInput}
+          onChangeText={setActualKwhInput}
+          keyboardType="decimal-pad"
+          placeholder={String(completeBooking?.estimatedKWh ?? "")}
+          hint="Driver will be billed for this amount"
+        />
+        <PrimaryCTA
+          label="Finalise & capture payment"
+          onPress={() => {
+            if (!completeBooking) return;
+            const kwh = parseFloat(actualKwhInput);
+            if (isNaN(kwh) || kwh <= 0) {
+              Alert.alert("Invalid kWh", "Please enter a valid kWh value greater than 0.");
+              return;
+            }
+            actions.markCompleted(completeBooking, String(kwh));
+            setCompleteBooking(null);
+            setActualKwhInput("");
+          }}
+        />
+      </BottomSheet>
     </SafeAreaView>
   );
 }

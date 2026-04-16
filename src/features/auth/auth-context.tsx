@@ -22,6 +22,13 @@ interface AuthContextValue {
   isBootstrapping: boolean;
   isProfileLoading: boolean;
   needsRoleSelection: boolean;
+  /** True on first login per device — user should complete payment/payout setup. */
+  needsOnboarding: boolean;
+  /** True while we are asynchronously checking whether onboarding is needed.
+   *  The route gate must NOT navigate until this is false. */
+  isOnboardingChecking: boolean;
+  /** Call after the user completes or skips the onboarding screen. */
+  markOnboardingDone: () => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   loginWithGoogle: (idToken: string) => Promise<void>;
   signup: (input: {
@@ -49,13 +56,14 @@ function mapProfile(row: Record<string, unknown>): UserProfile {
     email: row.email as string,
     displayName: row.display_name as string,
     role: row.role as AppRole,
-    isDriver: row.is_driver as boolean ?? true,
-    isHost: row.is_host as boolean ?? false,
-    isAdmin: row.is_admin as boolean ?? false,
+    isDriver: (row.is_driver ?? false) as boolean,
+    isHost: (row.is_host ?? false) as boolean,
+    isAdmin: (row.is_admin ?? false) as boolean,
     phone: (row.phone as string) || undefined,
     avatarUrl: (row.avatar_url as string) || undefined,
     preferredReservePercent: row.preferred_reserve_percent as number,
     stripeAccountId: (row.stripe_account_id as string) || undefined,
+    isSuspended: (row.is_suspended ?? false) as boolean,
     createdAtIso: row.created_at as string,
     updatedAtIso: row.updated_at as string,
   };
@@ -67,6 +75,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isBootstrapping, setIsBootstrapping] = useState(true);
   const [isProfileLoading, setIsProfileLoading] = useState(false);
   const [needsRoleSelection, setNeedsRoleSelection] = useState(false);
+  const [needsOnboarding, setNeedsOnboarding] = useState(false);
+  const [isOnboardingChecking, setIsOnboardingChecking] = useState(false);
 
   // Bootstrap: verify connectivity then check existing session
   useEffect(() => {
@@ -188,6 +198,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [user]);
 
+  // Detect first-time login: show onboarding if user hasn't dismissed it yet.
+  // Admins are exempt — they never need payment/payout setup.
+  //
+  // isOnboardingChecking is set to true SYNCHRONOUSLY before the async
+  // AsyncStorage read so the route gate waits for the answer before
+  // deciding where to navigate. Without this gate, the route gate fires
+  // while needsOnboarding is still false and sends the user to the
+  // dashboard before we know they need onboarding.
+  useEffect(() => {
+    if (!user || !profile) {
+      setNeedsOnboarding(false);
+      setIsOnboardingChecking(false);
+      return;
+    }
+    if (profile.isAdmin) {
+      setNeedsOnboarding(false);
+      setIsOnboardingChecking(false);
+      return;
+    }
+    // Block navigation until the AsyncStorage check resolves
+    setIsOnboardingChecking(true);
+    let cancelled = false;
+    (async () => {
+      const key = `@vehiclegrid:onboarding:${profile.id}`;
+      const done = await AsyncStorage.getItem(key);
+      if (!cancelled) {
+        setNeedsOnboarding(done === null);
+        setIsOnboardingChecking(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [user, profile?.id, profile?.role]);
+
   // Register push token when profile is loaded
   useEffect(() => {
     if (!user || !profile) return;
@@ -204,10 +247,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         if (finalStatus !== "granted") return;
 
-        const projectId = Constants.expoConfig?.extra?.eas?.projectId;
-        const tokenData = await Notifications.getExpoPushTokenAsync(
-          projectId ? { projectId } : undefined
-        );
+        const projectId =
+          Constants.expoConfig?.extra?.eas?.projectId as string | undefined;
+
+        // getExpoPushTokenAsync requires a projectId in SDK 54+.
+        // Skip silently in dev/Expo Go when none is configured.
+        if (!projectId) return;
+
+        const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
         const token = tokenData.data;
 
         if (cancelled) return;
@@ -242,6 +289,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isBootstrapping,
       isProfileLoading,
       needsRoleSelection,
+      needsOnboarding,
+      isOnboardingChecking,
+      markOnboardingDone: async () => {
+        if (!profile) return;
+        const key = `@vehiclegrid:onboarding:${profile.id}`;
+        await AsyncStorage.setItem(key, "1");
+        setNeedsOnboarding(false);
+      },
       login: async (email, password) => {
         await signInWithEmail(email, password);
       },
@@ -314,6 +369,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(null);
         setProfile(null);
         setNeedsRoleSelection(false);
+        setNeedsOnboarding(false);
+        setIsOnboardingChecking(false);
       },
       updateProfileDetails: async (patch) => {
         if (!user) throw new Error("Not authenticated");
@@ -324,7 +381,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (patch.avatarUrl !== undefined) updatePayload.avatar_url = patch.avatarUrl;
         if (patch.preferredReservePercent !== undefined)
           updatePayload.preferred_reserve_percent = patch.preferredReservePercent;
-        if (patch.role !== undefined) updatePayload.role = patch.role;
+        if (patch.role !== undefined) {
+          updatePayload.role = patch.role;
+          updatePayload.is_driver = patch.role === "driver" || patch.role === "admin";
+          updatePayload.is_host = patch.role === "host" || patch.role === "admin";
+          updatePayload.is_admin = patch.role === "admin";
+        }
 
         if (Object.keys(updatePayload).length === 0) return;
 
@@ -344,12 +406,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             ...(patch.phone !== undefined && { phone: patch.phone }),
             ...(patch.avatarUrl !== undefined && { avatarUrl: patch.avatarUrl }),
             ...(patch.preferredReservePercent !== undefined && { preferredReservePercent: patch.preferredReservePercent }),
-            ...(patch.role !== undefined && { role: patch.role }),
+            ...(patch.role !== undefined && {
+              role: patch.role,
+              isDriver: patch.role === "driver" || patch.role === "admin",
+              isHost: patch.role === "host" || patch.role === "admin",
+              isAdmin: patch.role === "admin",
+            }),
           };
         });
       },
     }),
-    [user, profile, isBootstrapping, isProfileLoading, needsRoleSelection]
+    [user, profile, isBootstrapping, isProfileLoading, needsRoleSelection, needsOnboarding, isOnboardingChecking]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

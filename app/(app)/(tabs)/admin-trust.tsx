@@ -24,6 +24,7 @@ import {
 import { listChargers, updateChargerStatus, type Charger } from "@/src/features/chargers";
 import { getUserProfile, suspendUser } from "@/src/features/users/user.repository";
 import { AppConfig } from "@/src/constants/app";
+import { useAuth } from "@/src/features/auth/auth-context";
 import { useEntranceAnimation, useRefresh } from "@/src/hooks";
 import { useThemeColors } from "@/src/hooks/useThemeColors";
 
@@ -36,6 +37,7 @@ function formatResponseTime(minutes: number): string {
 }
 
 export default function AdminTrustTabScreen() {
+  const { profile } = useAuth();
   const entranceStyle = useEntranceAnimation();
   const colors = useThemeColors();
   const queryClient = useQueryClient();
@@ -149,6 +151,8 @@ export default function AdminTrustTabScreen() {
       setError(err instanceof Error ? err.message : "Unable to reject charger.");
     }
   };
+
+  if (!profile?.isAdmin) return null;
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={["bottom"]}>

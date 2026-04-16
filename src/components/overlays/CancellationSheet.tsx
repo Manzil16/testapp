@@ -113,7 +113,7 @@ export function CancellationSheet({
           onPress={handleConfirm}
           loading={loading}
           disabled={!canSubmit}
-          danger
+          variant="danger"
           style={styles.actionHalf}
         />
       </View>

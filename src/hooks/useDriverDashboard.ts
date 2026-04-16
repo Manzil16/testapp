@@ -50,7 +50,7 @@ export function useDriverDashboard(userId?: string) {
         (b: Booking) =>
           b.status === "requested" ||
           b.status === "approved" ||
-          b.status === "in_progress"
+          b.status === "active"
       ) ?? null,
     [bookings]
   );

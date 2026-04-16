@@ -100,12 +100,6 @@ interface RoleOption {
   accentBg: string;
 }
 
-const ROLE_IONICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
-  driver: "car-sport",
-  host: "home",
-  admin: "shield-checkmark",
-};
-
 const ROLES: RoleOption[] = [
   {
     id: "driver",
@@ -124,15 +118,6 @@ const ROLES: RoleOption[] = [
     bullets: ["Share your home charger", "Set your own schedule", "Earn per kWh delivered"],
     accentColor: Colors.info,
     accentBg: Colors.infoLight,
-  },
-  {
-    id: "admin",
-    label: "Admin",
-    icon: "shield-checkmark",
-    headline: "Manage the platform",
-    bullets: ["Verify charger listings", "Resolve disputes & reports", "Access platform analytics"],
-    accentColor: Colors.warning,
-    accentBg: Colors.warningLight,
   },
 ];
 

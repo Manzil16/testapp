@@ -1,6 +1,17 @@
 import { supabase } from "../lib/supabase";
 import { AppConfig } from "../constants/app";
 
+export class StripeNotConfiguredError extends Error {
+  constructor() {
+    super("Stripe is not configured. Enter your test credentials to continue.");
+    this.name = "StripeNotConfiguredError";
+  }
+}
+
+export function isStripeNotConfiguredError(err: unknown): err is StripeNotConfiguredError {
+  return err instanceof StripeNotConfiguredError;
+}
+
 export interface StripeOnboardingResult {
   accountId: string;
   onboardingUrl: string;
@@ -9,6 +20,58 @@ export interface StripeOnboardingResult {
 export interface PaymentIntentResult {
   clientSecret: string;
   paymentIntentId: string;
+  card?: {
+    brand?: string;
+    last4?: string;
+  };
+}
+
+export interface PaymentSetupStatusResult {
+  paymentMethodAdded: boolean;
+  paymentMethodCount: number;
+  card?: {
+    brand?: string;
+    last4?: string;
+  };
+  customerId?: string;
+}
+
+async function extractFunctionErrorMessage(err: unknown, fallback: string): Promise<string> {
+  if (!(err instanceof Error)) {
+    return fallback;
+  }
+
+  let message = err.message || fallback;
+  const errorWithContext = err as Error & {
+    context?: {
+      json?: () => Promise<{ error?: unknown }>;
+      text?: () => Promise<string>;
+    };
+  };
+
+  if (errorWithContext.context?.json) {
+    try {
+      const body = await errorWithContext.context.json();
+      if (body?.error) {
+        return String(body.error);
+      }
+    } catch {
+      // Fall through to plain text extraction.
+    }
+  }
+
+  if (errorWithContext.context?.text) {
+    try {
+      const body = await errorWithContext.context.text();
+      if (body) {
+        return body;
+      }
+    } catch {
+      // Fall through to the original message below.
+    }
+  }
+
+  return message;
 }
 
 /**
@@ -16,10 +79,15 @@ export interface PaymentIntentResult {
  * Calls a Supabase Edge Function that handles Stripe API calls server-side.
  */
 export async function createConnectAccount(hostUserId: string): Promise<StripeOnboardingResult> {
+  const { data: { session } } = await supabase.auth.getSession();
   const { data, error } = await supabase.functions.invoke("stripe-connect-onboard", {
     body: { hostUserId },
+    headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : undefined,
   });
-  if (error) throw new Error(error.message || "Failed to create Stripe account");
+  if (data?.stripeNotConfigured) throw new StripeNotConfiguredError();
+  if (error) {
+    throw new Error(await extractFunctionErrorMessage(error, "Failed to create Stripe account"));
+  }
   return data as StripeOnboardingResult;
 }
 
@@ -41,10 +109,14 @@ export async function createPaymentIntent(input: {
       hostFeePercent: AppConfig.HOST_FEE_PERCENT,
     },
   });
+  if (data?.stripeNotConfigured) throw new StripeNotConfiguredError();
   if (error) {
-    console.error("[stripeService] createPaymentIntent error:", JSON.stringify(error));
-    console.error("[stripeService] response data:", JSON.stringify(data));
-    throw new Error(error.message || "Failed to create payment intent");
+    const message = await extractFunctionErrorMessage(error, "Failed to create payment intent");
+    console.error("[stripeService] createPaymentIntent error:", message);
+    throw new Error(message || "Failed to create payment intent");
+  }
+  if (!data?.clientSecret || !data?.paymentIntentId) {
+    throw new Error("Payment setup did not complete. Please try again.");
   }
   return data as PaymentIntentResult;
 }
@@ -100,16 +172,63 @@ export async function reconcileAndCapture(
 }
 
 /**
+ * Create a Stripe Checkout Session (setup mode) so a driver can save a card.
+ * Returns a browser URL — open with expo-web-browser. No native Stripe SDK needed.
+ * Requires the stripe-setup-payment-method edge function to be deployed.
+ */
+export async function setupPaymentMethod(userId: string): Promise<{ sessionUrl: string }> {
+  const { data: { session } } = await supabase.auth.getSession();
+  const { data, error } = await supabase.functions.invoke("stripe-setup-payment-method", {
+    body: { userId },
+    headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : undefined,
+  });
+  if (data?.stripeNotConfigured) throw new StripeNotConfiguredError();
+  if (error) {
+    throw new Error(await extractFunctionErrorMessage(error, "Failed to create payment setup session"));
+  }
+  return data as { sessionUrl: string };
+}
+
+/**
+ * Re-validate whether the current driver has a saved payment method after
+ * returning from Stripe Checkout.
+ */
+export async function verifyPaymentMethodSetup(userId: string): Promise<PaymentSetupStatusResult> {
+  const { data: { session } } = await supabase.auth.getSession();
+  const { data, error } = await supabase.functions.invoke("payment-setup-complete", {
+    body: { userId },
+    headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : undefined,
+  });
+  if (data?.stripeNotConfigured) throw new StripeNotConfiguredError();
+  if (error) {
+    throw new Error(await extractFunctionErrorMessage(error, "Failed to verify payment setup"));
+  }
+  return data as PaymentSetupStatusResult;
+}
+
+/**
  * Check the onboarding status of a host's Stripe account.
+ * Throws StripeNotConfiguredError if the edge function reports Stripe keys are missing.
  */
 export async function getConnectAccountStatus(hostUserId: string): Promise<{
-  isOnboarded: boolean;
+  connected: boolean;
+  chargesEnabled: boolean;
+  payoutsEnabled: boolean;
   accountId: string | null;
   dashboardUrl: string | null;
 }> {
   const { data, error } = await supabase.functions.invoke("stripe-account-status", {
     body: { hostUserId },
   });
-  if (error) throw new Error(error.message || "Failed to check Stripe status");
-  return data as { isOnboarded: boolean; accountId: string | null; dashboardUrl: string | null };
+  if (data?.stripeNotConfigured) throw new StripeNotConfiguredError();
+  if (error) {
+    throw new Error(await extractFunctionErrorMessage(error, "Failed to check Stripe status"));
+  }
+  return data as {
+    connected: boolean;
+    chargesEnabled: boolean;
+    payoutsEnabled: boolean;
+    accountId: string | null;
+    dashboardUrl: string | null;
+  };
 }

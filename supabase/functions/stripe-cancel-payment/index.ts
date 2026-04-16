@@ -1,9 +1,5 @@
-// Supabase Edge Function: Cancel Payment
-// Cancels a PaymentIntent (releases authorization hold) when host declines or booking expires.
-
-import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
-import Stripe from "https://esm.sh/stripe@14.10.0?target=deno";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
+import Stripe from "npm:stripe@14.10.0";
+import { createClient } from "npm:@supabase/supabase-js@2.39.0";
 import { sendPushNotification } from "../_shared/push-notifications.ts";
 
 const corsHeaders = {
@@ -11,16 +7,17 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!, {
-  apiVersion: "2023-10-16",
-});
-
-const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
+  }
+
+  const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
+  if (!stripeKey) {
+    return new Response(
+      JSON.stringify({ stripeNotConfigured: true }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
   }
 
   try {
@@ -33,15 +30,10 @@ serve(async (req) => {
       );
     }
 
-    // Cancel the authorization hold
-    const paymentIntent = await stripe.paymentIntents.cancel(
-      paymentIntentId,
-      {},
-      { idempotencyKey: `payment_cancel_${paymentIntentId}` }
-    );
+    const stripe = new Stripe(stripeKey, { apiVersion: "2023-10-16" });
+    const paymentIntent = await stripe.paymentIntents.cancel(paymentIntentId, {});
 
-    // Update booking payment status
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
     const { data: booking } = await supabase
       .from("bookings")
       .update({ payment_status: "cancelled" })
@@ -49,12 +41,11 @@ serve(async (req) => {
       .select("id, driver_id, charger:chargers(name)")
       .single();
 
-    // Notify the driver that their booking was declined
     if (booking?.driver_id) {
       const chargerName = (booking.charger as any)?.name ?? "the charger";
       await sendPushNotification(
-        supabaseUrl,
-        supabaseServiceKey,
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
         booking.driver_id,
         "Booking Declined",
         `Your booking at ${chargerName} was declined and the payment hold has been released.`,
@@ -68,7 +59,7 @@ serve(async (req) => {
     );
   } catch (err) {
     return new Response(
-      JSON.stringify({ error: err.message || "Failed to cancel payment" }),
+      JSON.stringify({ error: err instanceof Error ? err.message : "Failed to cancel payment" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

@@ -13,6 +13,12 @@ function mapRow(row: Record<string, unknown>): Vehicle {
     maxRangeKm: Number(row.max_range_km),
     efficiencyKWhPer100Km: Number(row.efficiency_kwh_per_100km),
     defaultReservePercent: row.default_reserve_percent as number,
+    connectorType: (row.connector_type as string) || "Type2",
+    maxChargePowerKw: Number(row.max_charge_power_kw) || 11,
+    realWorldEfficiencyKWhPer100Km: row.real_world_efficiency_kwh_per_100km != null
+      ? Number(row.real_world_efficiency_kwh_per_100km)
+      : null,
+    calibrationStatus: (row.calibration_status as Vehicle["calibrationStatus"]) || "uncalibrated",
     createdAtIso: row.created_at as string,
     updatedAtIso: row.updated_at as string,
   };
@@ -34,6 +40,8 @@ export async function upsertVehicle(
     max_range_km: payload.maxRangeKm,
     efficiency_kwh_per_100km: payload.efficiencyKWhPer100Km,
     default_reserve_percent: payload.defaultReservePercent,
+    connector_type: payload.connectorType,
+    max_charge_power_kw: payload.maxChargePowerKw,
   };
 
   const { data, error } = await supabase

@@ -382,7 +382,7 @@ export default function BookingDetailScreen() {
             label="Cancel booking"
             onPress={handleCancel}
             loading={actionLoading}
-            danger
+            variant="danger"
           />
         )}
         {booking.status === "approved" && (
@@ -413,22 +413,10 @@ export default function BookingDetailScreen() {
           booking.status === "expired" ||
           booking.status === "declined") && (
           <View style={styles.actionRow}>
-            {booking.status === "completed" && (
-              <SecondaryButton
-                label="Leave a review"
-                onPress={() =>
-                  router.push({
-                    pathname: "/(app)/session-history" as any,
-                    params: { bookingId: booking.id },
-                  })
-                }
-                style={styles.actionHalf}
-              />
-            )}
             <PrimaryCTA
               label="Book again"
               onPress={handleRebook}
-              style={booking.status === "completed" ? styles.actionHalf : { flex: 1 }}
+              style={{ flex: 1 }}
             />
           </View>
         )}

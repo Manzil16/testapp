@@ -272,8 +272,8 @@ export default function HostAnalyticsScreen() {
               icon="⚡"
               title="No chargers yet"
               message="Add your first charger to start earning."
-              ctaLabel="Add charger"
-              onCtaPress={() => router.push("/(app)/host/charger-form" as any)}
+              actionLabel="Add charger"
+              onAction={() => router.push("/(app)/host/charger-form" as any)}
             />
           ) : (
             chargerStats.map((cs, i) => (

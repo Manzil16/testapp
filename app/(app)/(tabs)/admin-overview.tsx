@@ -27,6 +27,7 @@ import {
   Shadows,
 } from "@/src/components";
 import { useEntranceAnimation } from "@/src/hooks";
+import { useAuth } from "@/src/features/auth/auth-context";
 import { useAdminEventLog } from "@/src/hooks/useAdminEventLog";
 import { useDebounce } from "@/src/hooks/useDebounce";
 import type { PlatformEvent } from "@/src/features/admin/admin.repository";
@@ -117,6 +118,7 @@ function getEventColor(eventType: string): string {
 }
 
 export default function AdminOverviewScreen() {
+  const { profile } = useAuth();
   const entranceStyle = useEntranceAnimation();
   const {
     events,
@@ -226,6 +228,8 @@ export default function AdminOverviewScreen() {
     },
     [expandedId]
   );
+
+  if (!profile?.isAdmin) return null;
 
   return (
     <SafeAreaView style={styles.safe} edges={["bottom"]}>

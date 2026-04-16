@@ -369,6 +369,9 @@ verify_jwt = false
 [functions.stripe-account-status]
 verify_jwt = false
 
+[functions.payment-setup-complete]
+verify_jwt = false
+
 [functions.process-refund]
 verify_jwt = false
 

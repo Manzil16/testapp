@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Alert, StyleSheet, Text, View } from "react-native";
+import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import {
@@ -23,6 +24,79 @@ function toNumber(value: string, fallback: number) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+const CONNECTOR_DESCRIPTIONS: Record<string, string> = {
+  Type2: "Most AC home & public chargers in Australia",
+  CCS2: "Combined AC + DC fast charging (most modern EVs)",
+  CHAdeMO: "DC fast charging (older Nissan, Mitsubishi)",
+  Tesla: "Tesla proprietary connector",
+};
+
+function ConnectorOption({
+  label,
+  selected,
+  onPress,
+}: {
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      style={[connectorStyles.row, selected && connectorStyles.rowSelected]}
+      onPress={onPress}
+    >
+      <View style={[connectorStyles.radio, selected && connectorStyles.radioSelected]}>
+        {selected && <View style={connectorStyles.radioDot} />}
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={connectorStyles.label}>{label}</Text>
+        <Text style={connectorStyles.desc}>{CONNECTOR_DESCRIPTIONS[label]}</Text>
+      </View>
+      {selected && <Ionicons name="checkmark-circle" size={18} color={Colors.accent} />}
+    </Pressable>
+  );
+}
+
+const connectorStyles = StyleSheet.create({
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.md,
+    paddingVertical: Spacing.sm + 2,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.borderLight,
+  },
+  rowSelected: { borderBottomColor: Colors.accentLight },
+  radio: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: Colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  radioSelected: { borderColor: Colors.accent },
+  radioDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: Colors.accent,
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: Colors.textPrimary,
+    fontFamily: "DMSans_600SemiBold",
+  },
+  desc: {
+    fontSize: 12,
+    color: Colors.textMuted,
+    fontFamily: "DMSans_400Regular",
+    marginTop: 1,
+  },
+});
+
 export default function VehicleProfileScreen() {
   const { user } = useAuth();
   const userId = useMemo(
@@ -39,6 +113,8 @@ export default function VehicleProfileScreen() {
   const [maxRangeKm, setMaxRangeKm] = useState(String(AppConfig.VEHICLE_DEFAULTS.maxRangeKm));
   const [efficiencyWhKm, setEfficiencyWhKm] = useState(String(AppConfig.VEHICLE_DEFAULTS.efficiencyWhKm));
   const [reservePercent, setReservePercent] = useState(String(AppConfig.VEHICLE_DEFAULTS.reservePercent));
+  const [connectorType, setConnectorType] = useState("Type2");
+  const [maxChargePowerKw, setMaxChargePowerKw] = useState("11");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -54,6 +130,8 @@ export default function VehicleProfileScreen() {
     setMaxRangeKm(String(vehicle.maxRangeKm));
     setEfficiencyWhKm(String(Math.round(vehicle.efficiencyKWhPer100Km * 10)));
     setReservePercent(String(vehicle.defaultReservePercent));
+    setConnectorType(vehicle.connectorType || "Type2");
+    setMaxChargePowerKw(String(vehicle.maxChargePowerKw || 11));
   }, [data.primaryVehicle]);
 
   const save = async () => {
@@ -74,6 +152,8 @@ export default function VehicleProfileScreen() {
           maxRangeKm: Math.max(AppConfig.VEHICLE_DEFAULTS.bounds.minRangeKm, toNumber(maxRangeKm, AppConfig.VEHICLE_DEFAULTS.bounds.fallbackRangeKm)),
           efficiencyKWhPer100Km: Math.max(AppConfig.VEHICLE_DEFAULTS.bounds.minEfficiencyKwhPer100, toNumber(efficiencyWhKm, AppConfig.VEHICLE_DEFAULTS.efficiencyWhKm) / 10),
           defaultReservePercent: Math.max(AppConfig.VEHICLE_DEFAULTS.bounds.minReservePercent, Math.min(AppConfig.VEHICLE_DEFAULTS.bounds.maxReservePercent, toNumber(reservePercent, AppConfig.VEHICLE_DEFAULTS.reservePercent))),
+          connectorType: connectorType.trim() || "Type2",
+          maxChargePowerKw: Math.max(1, toNumber(maxChargePowerKw, 11)),
         },
         data.primaryVehicle?.id
       );
@@ -119,6 +199,10 @@ export default function VehicleProfileScreen() {
                 <InfoPill label={`${data.primaryVehicle.batteryCapacityKWh} kWh`} variant="primary" />
                 <InfoPill label={`${data.primaryVehicle.maxRangeKm} km range`} variant="success" />
                 <InfoPill label={`${data.primaryVehicle.defaultReservePercent}% reserve`} />
+                <InfoPill
+                  label={data.primaryVehicle.calibrationStatus === "uncalibrated" ? "Not calibrated" : `Calibrated (${data.primaryVehicle.calibrationStatus})`}
+                  variant={data.primaryVehicle.calibrationStatus === "uncalibrated" ? "warning" : "success"}
+                />
               </View>
             </PremiumCard>
           </Animated.View>
@@ -161,6 +245,27 @@ export default function VehicleProfileScreen() {
               keyboardType="numeric"
               hint="Battery percentage to keep in reserve during trips"
             />
+            <InputField
+              label="Max charge power (kW)"
+              value={maxChargePowerKw}
+              onChangeText={setMaxChargePowerKw}
+              keyboardType="numeric"
+              hint="Your car's maximum AC/DC charge accept rate (e.g. 11 for AC, 50–350 for DC)"
+            />
+          </PremiumCard>
+        </Animated.View>
+
+        <Animated.View entering={FadeInDown.delay(200).duration(260)}>
+          <PremiumCard style={styles.section}>
+            <SectionTitle title="Charging Connector" topSpacing={Spacing.xs} />
+            {(["Type2", "CCS2", "CHAdeMO", "Tesla"] as const).map((type) => (
+              <ConnectorOption
+                key={type}
+                label={type}
+                selected={connectorType === type}
+                onPress={() => setConnectorType(type)}
+              />
+            ))}
           </PremiumCard>
         </Animated.View>
 

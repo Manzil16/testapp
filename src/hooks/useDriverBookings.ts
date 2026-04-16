@@ -15,7 +15,7 @@ export function useDriverBookings(userId?: string) {
 
   const bookingsQuery = useQuery({
     queryKey: ["bookings", "driver", userId],
-    queryFn: () => listBookingsByDriver(userId!),
+    queryFn: () => listBookingsByDriver(userId ?? ""),
     enabled: Boolean(userId),
   });
 
@@ -28,7 +28,7 @@ export function useDriverBookings(userId?: string) {
 
   const reviewsQuery = useQuery({
     queryKey: ["reviews", "driver", userId],
-    queryFn: () => listReviewsByDriver(userId!),
+    queryFn: () => listReviewsByDriver(userId ?? ""),
     enabled: Boolean(userId),
   });
 
@@ -47,7 +47,7 @@ export function useDriverBookings(userId?: string) {
     const active: Booking[] = [];
     const past: Booking[] = [];
     for (const b of bookings) {
-      if (b.status === "in_progress" || b.status === "approved") active.push(b);
+      if (b.status === "active" || b.status === "approved") active.push(b);
       else if (b.status === "requested") upcoming.push(b);
       else past.push(b);
     }
@@ -88,8 +88,13 @@ export function useDriverBookings(userId?: string) {
   const chargingMutation = useMutation({
     mutationFn: async (bookingId: string) => {
       await updateArrivalSignal(bookingId, "charging");
-      await updateBookingStatus(bookingId, "in_progress");
+      await updateBookingStatus(bookingId, "active");
     },
+    onSuccess: invalidate,
+  });
+
+  const endSessionMutation = useMutation({
+    mutationFn: (bookingId: string) => updateBookingStatus(bookingId, "completed"),
     onSuccess: invalidate,
   });
 
@@ -120,6 +125,7 @@ export function useDriverBookings(userId?: string) {
         cancelMutation.mutateAsync({ bookingId, reason }),
       markArrived: (bookingId: string) => arriveMutation.mutateAsync(bookingId),
       startCharging: (bookingId: string) => chargingMutation.mutateAsync(bookingId),
+      endSession: (bookingId: string) => endSessionMutation.mutateAsync(bookingId),
       leaveReview: (booking: Booking, rating: number, comment: string) =>
         reviewMutation.mutateAsync({ booking, rating, comment }),
     },

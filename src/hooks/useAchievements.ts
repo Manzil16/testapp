@@ -41,7 +41,7 @@ export function useAchievements(userId: string | undefined) {
       (b) => b.status === "completed"
     );
     const totalKwh = completedBookings.reduce(
-      (sum, b) => sum + b.estimatedKWh,
+      (sum, b) => sum + (b.actualKWh ?? b.estimatedKWh),
       0
     );
     const tripCount = (tripsQuery.data ?? []).length;

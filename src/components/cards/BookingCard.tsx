@@ -7,17 +7,21 @@ export type BookingStatus =
   | "requested"
   | "approved"
   | "declined"
-  | "in_progress"
+  | "active"
   | "completed"
-  | "cancelled";
+  | "cancelled"
+  | "expired"
+  | "missed";
 
 const statusConfig: Record<BookingStatus, { label: string; variant: InfoPillVariant; borderColor: string }> = {
   requested: { label: "Pending Approval", variant: "warning", borderColor: "#F59E0B" },
   approved: { label: "Confirmed", variant: "success", borderColor: "#00BFA5" },
   declined: { label: "Declined", variant: "error", borderColor: "#EF4444" },
-  in_progress: { label: "Charging", variant: "primary", borderColor: "#3B82F6" },
+  active: { label: "Charging", variant: "primary", borderColor: "#3B82F6" },
   completed: { label: "Completed", variant: "success", borderColor: "#10B981" },
   cancelled: { label: "Cancelled", variant: "error", borderColor: "#94A3B8" },
+  expired: { label: "Expired", variant: "error", borderColor: "#94A3B8" },
+  missed: { label: "Missed", variant: "error", borderColor: "#EF4444" },
 };
 
 export interface BookingCardData {

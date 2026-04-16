@@ -31,7 +31,7 @@ export function useHostDashboard(userId?: string) {
 
       for (const b of bookings) {
         if (b.status === "requested") pending.push(b);
-        else if (b.status === "in_progress" || b.status === "approved") active.push(b);
+        else if (b.status === "active" || b.status === "approved") active.push(b);
         else if (
           b.status === "completed" &&
           new Date(b.createdAtIso) >= monthStart

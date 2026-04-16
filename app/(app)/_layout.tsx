@@ -49,10 +49,6 @@ export default function AppLayout() {
         options={{ ...sharedStackOptions, title: "", headerBackVisible: false }}
       />
       <Stack.Screen
-        name="session-history"
-        options={{ ...sharedStackOptions, title: "Session history" }}
-      />
-      <Stack.Screen
         name="notifications"
         options={{ ...sharedStackOptions, title: "Notifications" }}
       />

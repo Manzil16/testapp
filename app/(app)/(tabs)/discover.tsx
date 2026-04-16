@@ -120,9 +120,13 @@ export default function DiscoverScreen() {
   }, [data.chargers, location]);
 
   const handleShare = async (charger: { id: string; name: string; suburb: string }) => {
-    await Share.share({
-      message: `Check out ${charger.name} on VehicleGrid — EV charging in ${charger.suburb}!`,
-    });
+    try {
+      await Share.share({
+        message: `Check out ${charger.name} on VehicleGrid — EV charging in ${charger.suburb}!`,
+      });
+    } catch {
+      // User cancelled or share sheet failed — no action needed
+    }
   };
 
   return (
@@ -141,12 +145,12 @@ export default function DiscoverScreen() {
             <FilterChipRow
               chips={connectorChips}
               activeId={data.connectorFilter}
-              onSelect={(id) => actions.setConnectorFilter(id as any)}
+              onSelect={(id) => actions.setConnectorFilter(id as "any" | "Type2" | "CCS2" | "CHAdeMO" | "Tesla")}
             />
             <FilterChipRow
               chips={powerChips}
               activeId={data.minPowerFilter}
-              onSelect={(id) => actions.setMinPowerFilter(id as any)}
+              onSelect={(id) => actions.setMinPowerFilter(id as "any" | "7" | "22" | "50")}
             />
             <SegmentedControl
               segments={[
@@ -154,7 +158,7 @@ export default function DiscoverScreen() {
                 { id: "list", label: "List" },
               ]}
               activeId={data.viewMode}
-              onChange={(id) => actions.setViewMode(id as any)}
+              onChange={(id) => actions.setViewMode(id as "map" | "list")}
             />
           </View>
 
@@ -183,7 +187,7 @@ export default function DiscoverScreen() {
                 )}
 
                 {/* Charger markers with price labels */}
-                {data.all.map((charger) => (
+                {data.chargers.map((charger) => (
                   <Marker
                     key={charger.id}
                     coordinate={{ latitude: charger.latitude, longitude: charger.longitude }}
@@ -241,7 +245,7 @@ export default function DiscoverScreen() {
                 </Animated.View>
               )}
 
-              {!data.all.length && !isLoading ? (
+              {!data.chargers.length && !isLoading ? (
                 <EmptyStateCard
                   icon="🗺️"
                   title="No chargers found"

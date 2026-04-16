@@ -27,7 +27,7 @@ const STATUS_CONFIG: Record<string, { color: string; bg: string; label: string; 
 
 export default function HostChargersTabScreen() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const entranceStyle = useEntranceAnimation();
 
   const userId = useMemo(
@@ -37,6 +37,8 @@ export default function HostChargersTabScreen() {
 
   const { data, isLoading, error, refresh, actions } = useHostChargers(userId);
   const { refreshing, onRefresh } = useRefresh(refresh);
+
+  if (!profile?.isHost) return null;
 
   return (
     <SafeAreaView style={styles.safe} edges={["bottom"]}>

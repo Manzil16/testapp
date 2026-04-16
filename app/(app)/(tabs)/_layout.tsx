@@ -55,11 +55,9 @@ const sharedOptions = {
 export default function AppTabsLayout() {
   const { profile } = useAuth();
   const { counts } = useBadgeCounts();
-  const role = profile?.role || "driver";
-
-  const isDriver = role === "driver";
-  const isHost = role === "host";
-  const isAdmin = role === "admin";
+  const isDriver = profile?.isDriver ?? false;
+  const isHost = profile?.isHost ?? false;
+  const isAdmin = profile?.isAdmin ?? false;
 
   const avatarUri = profile?.avatarUrl;
 
@@ -260,13 +258,13 @@ export default function AppTabsLayout() {
         }}
       />
 
-      {/* Profile (driver + host) */}
+      {/* Profile (driver + host + admin) */}
       <Tabs.Screen
         name="profile"
         options={{
           ...sharedHeaderOptions,
           title: "Profile",
-          href: isDriver || isHost ? undefined : null,
+          href: isDriver || isHost || isAdmin ? undefined : null,
           tabBarIcon: ProfileTabIcon,
         }}
       />

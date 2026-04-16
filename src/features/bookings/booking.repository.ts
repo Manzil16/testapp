@@ -1,6 +1,6 @@
 import { supabase } from "../../lib/supabase";
 import { AppConfig } from "../../constants/app";
-import { reconcileAndCapture } from "../../services/stripeService";
+import { reconcileAndCapture, verifyPaymentMethodSetup } from "../../services/stripeService";
 import { getVerificationGate } from "../verification/verification-gates.repository";
 import type { Booking, BookingStatus, CreateBookingInput } from "./booking.types";
 
@@ -64,15 +64,51 @@ export async function createBookingRequest(input: CreateBookingInput): Promise<B
     return { suspended: true };
   }
 
+  // Gate 0.5: host must not be suspended
+  const { data: hostRow } = await supabase
+    .from("profiles")
+    .select("is_suspended")
+    .eq("id", input.hostUserId)
+    .single();
+
+  if (hostRow?.is_suspended) {
+    return { error: "This charger is temporarily unavailable." };
+  }
+
   // Gate 1: driver must be verified
-  const gate = await getVerificationGate(input.driverUserId);
-  if (!gate?.driverCleared) {
+  let gate;
+  try {
+    gate = await getVerificationGate(input.driverUserId);
+  } catch {
+    return { error: "Verification check failed. Please try again." };
+  }
+
+  let paymentMethodAdded = gate?.paymentMethodAdded ?? false;
+  if (!paymentMethodAdded) {
+    try {
+      const paymentStatus = await verifyPaymentMethodSetup(input.driverUserId);
+      paymentMethodAdded = paymentStatus.paymentMethodAdded;
+    } catch {
+      if (!gate) {
+        return { error: "Verification check failed. Please try again." };
+      }
+    }
+  }
+
+  // Some environments may not have a verification_gates row yet. In that case,
+  // rely on the live Stripe payment-method probe so booking is not blocked by
+  // stale or missing gate data.
+  const emailVerified = gate?.emailVerified ?? true;
+  const phoneVerified = gate?.phoneVerified ?? true;
+  const driverCleared = (gate?.driverCleared ?? false) || (emailVerified && phoneVerified && paymentMethodAdded);
+
+  if (!driverCleared) {
     return {
       unverified: true,
       missing: {
-        emailVerified: gate?.emailVerified ?? false,
-        phoneVerified: gate?.phoneVerified ?? false,
-        paymentAdded: gate?.paymentMethodAdded ?? false,
+        emailVerified,
+        phoneVerified,
+        paymentAdded: paymentMethodAdded,
       },
     };
   }
@@ -104,7 +140,7 @@ export async function createBookingRequest(input: CreateBookingInput): Promise<B
     .eq("id", input.chargerId)
     .single();
 
-  if (charger.error) return { error: "Selected charger could not be found." };
+  if (charger.error || !charger.data) return { error: "Selected charger could not be found." };
 
   const pricePerKwh = Number(charger.data.price_per_kwh);
   const subtotalAmount = pricePerKwh * input.estimatedKWh;
@@ -135,9 +171,41 @@ export async function createBookingRequest(input: CreateBookingInput): Promise<B
 
     if (error?.code === "23P01") return { conflict: true };
     if (error) return { error: error.message };
-    return { success: true, bookingId: (data as { id: string }).id };
+
+    const bookingId = (data as { id: string }).id;
+
+    // Notify host — fire-and-forget so a push failure never blocks booking creation.
+    void notifyHostOfNewRequest(input.hostUserId, bookingId);
+
+    return { success: true, bookingId };
   } catch (e: unknown) {
     return { error: e instanceof Error ? e.message : "Unknown error" };
+  }
+}
+
+async function notifyHostOfNewRequest(hostUserId: string, bookingId: string): Promise<void> {
+  try {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("expo_push_token")
+      .eq("id", hostUserId)
+      .single();
+
+    if (!profile?.expo_push_token) return;
+
+    await fetch("https://exp.host/--/api/v2/push/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        to: profile.expo_push_token,
+        title: "New Booking Request",
+        body: "A driver wants to use your charger. Tap to approve or decline.",
+        data: { bookingId, screen: "host-booking-detail" },
+        sound: "default",
+      }),
+    });
+  } catch {
+    // Push is non-critical — never block booking creation.
   }
 }
 

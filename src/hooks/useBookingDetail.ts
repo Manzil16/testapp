@@ -17,7 +17,11 @@ export function useBookingDetail(bookingId: string) {
 
   const chargerQuery = useQuery({
     queryKey: ["charger", bookingQuery.data?.chargerId],
-    queryFn: () => getChargerById(bookingQuery.data!.chargerId),
+    queryFn: async () => {
+      const cid = bookingQuery.data?.chargerId;
+      if (!cid) return null;
+      return getChargerById(cid);
+    },
     enabled: !!bookingQuery.data?.chargerId,
   });
 

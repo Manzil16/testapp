@@ -171,11 +171,11 @@ export default function DriverHomeScreen() {
                         router.push("/(app)/(tabs)/bookings" as any)
                       }
                     >
-                      {activeBooking.status === "in_progress" && <View style={styles.activePulse} />}
+                      {activeBooking.status === "active" && <View style={styles.activePulse} />}
                       <View style={styles.activeContent}>
                         <View style={styles.activeIconCircle}>
                           <Ionicons
-                            name={activeBooking.status === "in_progress" ? "flash" : activeBooking.status === "approved" ? "checkmark-circle" : "time"}
+                            name={activeBooking.status === "active" ? "flash" : activeBooking.status === "approved" ? "checkmark-circle" : "time"}
                             size={20}
                             color={Colors.primary}
                           />
@@ -183,13 +183,13 @@ export default function DriverHomeScreen() {
                         <View style={{ flex: 1 }}>
                           <View style={styles.activeLabelRow}>
                             <Text style={styles.activeLabel}>
-                              {activeBooking.status === "in_progress"
+                              {activeBooking.status === "active"
                                 ? "Charging"
                                 : activeBooking.status === "approved"
                                 ? "Booking Approved"
                                 : "Pending Approval"}
                             </Text>
-                            {activeBooking.status === "in_progress" && (
+                            {activeBooking.status === "active" && (
                               <>
                                 <View style={styles.liveDot} />
                                 <Text style={styles.liveText}>LIVE</Text>

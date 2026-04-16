@@ -134,6 +134,27 @@ export default function DriverBookingsScreen() {
     showToast("Review submitted.");
   };
 
+  const getPrimaryActionHandler = (
+    item: Booking,
+    canStartCharging: boolean,
+    isInProgress: boolean,
+    reviewedRating: number | undefined,
+  ): (() => void) | undefined => {
+    if (segment === "upcoming" && item.status === "requested") {
+      return () => router.push(`/(app)/chargers/${item.chargerId}` as any);
+    }
+    if (segment === "active" && canStartCharging) {
+      return () => actions.startCharging(item.id);
+    }
+    if (segment === "active" && isInProgress) {
+      return () => actions.endSession(item.id);
+    }
+    if (segment === "past" && !reviewedRating) {
+      return () => setReviewBooking(item);
+    }
+    return undefined;
+  };
+
   return (
     <SafeAreaView style={styles.safe} edges={["bottom"]}>
       <Animated.View style={[{ flex: 1 }, entranceStyle]}>
@@ -148,7 +169,11 @@ export default function DriverBookingsScreen() {
               { id: "past", label: "Past" },
             ]}
             activeId={segment}
-            onChange={(id) => setSegment(id as any)}
+            onChange={(id) => {
+              if (id === "upcoming" || id === "active" || id === "past") {
+                setSegment(id);
+              }
+            }}
             style={styles.segmented}
           />
 
@@ -192,7 +217,7 @@ export default function DriverBookingsScreen() {
 
                 // Only show arrival/charging actions when host has approved
                 const isApproved = item.status === "approved";
-                const isInProgress = item.status === "in_progress";
+                const isInProgress = item.status === "active";
                 const canMarkArrived = isApproved && item.arrivalSignal === "en_route";
                 const canStartCharging = isApproved && item.arrivalSignal === "arrived";
 
@@ -200,7 +225,11 @@ export default function DriverBookingsScreen() {
                   segment === "upcoming"
                     ? item.status === "requested" ? "Edit Booking" : undefined
                     : segment === "active"
-                    ? canStartCharging ? "Start Charging" : undefined
+                    ? canStartCharging
+                      ? "Start Charging"
+                      : isInProgress
+                      ? "End Session"
+                      : undefined
                     : reviewedRating
                     ? undefined
                     : "Leave Review";
@@ -243,15 +272,12 @@ export default function DriverBookingsScreen() {
                             : undefined
                         }
                         primaryActionLabel={primaryAction}
-                        onPrimaryAction={
-                          segment === "upcoming" && item.status === "requested"
-                            ? () => router.push(`/(app)/chargers/${item.chargerId}` as any)
-                            : segment === "active"
-                            ? () => actions.startCharging(item.id)
-                            : !reviewedRating && segment === "past"
-                            ? () => setReviewBooking(item)
-                            : undefined
-                        }
+                        onPrimaryAction={getPrimaryActionHandler(
+                          item,
+                          canStartCharging,
+                          isInProgress,
+                          reviewedRating,
+                        )}
                       />
 
                       {/* Charger details row */}
@@ -310,7 +336,11 @@ export default function DriverBookingsScreen() {
                           <View style={styles.costItem}>
                             <Text style={styles.costLabel}>Rate</Text>
                             <Text style={styles.costValue}>
-                              ${charger ? charger.pricingPerKwh.toFixed(2) : (item.totalAmount / item.estimatedKWh).toFixed(2)}/kWh
+                              ${charger
+                                ? charger.pricingPerKwh.toFixed(2)
+                                : item.estimatedKWh > 0
+                                ? (item.totalAmount / item.estimatedKWh).toFixed(2)
+                                : "—"}/kWh
                             </Text>
                           </View>
                           <View style={styles.costItem}>

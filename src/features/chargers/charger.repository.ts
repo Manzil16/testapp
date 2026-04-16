@@ -1,5 +1,6 @@
 import { supabase } from "../../lib/supabase";
 import { AppConfig } from "../../constants/app";
+import { getVerificationGate } from "../verification/verification-gates.repository";
 import type { Json } from "../../lib/database.types";
 import type {
   Charger,
@@ -56,6 +57,11 @@ export async function upsertCharger(
   payload: UpsertChargerInput,
   status: ChargerStatus = "pending"
 ): Promise<string> {
+  const gate = await getVerificationGate(hostUserId);
+  if (!gate?.hostCleared) {
+    throw new Error("Host verification required. Please complete ID and Stripe onboarding before listing a charger.");
+  }
+
   const row = {
     ...(chargerId ? { id: chargerId } : {}),
     host_id: hostUserId,

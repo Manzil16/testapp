@@ -46,6 +46,8 @@ function isValidUUID(value: unknown): value is string {
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
     shouldPlaySound: true,
     shouldSetBadge: false,
   }),
@@ -225,7 +227,7 @@ function AppRouteGate({ themeColors }: { themeColors: { background: string } }) 
   const authLoading = isBootstrapping || isProfileLoading;
   const [splashHidden, setSplashHidden] = useState(false);
   const [overlayVisible, setOverlayVisible] = useState(true);
-  const notificationResponseListener = useRef<Notifications.EventSubscription>();
+  const notificationResponseListener = useRef<Notifications.EventSubscription | undefined>(undefined);
 
   // Handle notification taps — validate bookingId before navigating
   useEffect(() => {
@@ -311,7 +313,11 @@ function AppRouteGate({ themeColors }: { themeColors: { background: string } }) 
         return;
       }
 
-      const defaultAppRoute = tabByRole[profile.role] || tabByRole.driver;
+      const defaultAppRoute = profile.isAdmin
+        ? tabByRole.admin
+        : profile.isHost && !profile.isDriver
+        ? tabByRole.host
+        : tabByRole[profile.role] || tabByRole.driver;
 
       if (inAuthGroup || !inAppGroup) {
         router.replace(defaultAppRoute as any);
@@ -320,22 +326,27 @@ function AppRouteGate({ themeColors }: { themeColors: { background: string } }) 
 
       if (area === "(tabs)") {
         if (!activeTab) return;
-        const allowedTabs = allowedTabsByRole[profile.role] || allowedTabsByRole.driver;
+        // Build allowed tabs from boolean flags so dual-role users can access both tab sets.
+        const allowedTabs = new Set<string>();
+        if (profile.isDriver) for (const t of allowedTabsByRole.driver) allowedTabs.add(t);
+        if (profile.isHost) for (const t of allowedTabsByRole.host) allowedTabs.add(t);
+        if (profile.isAdmin) for (const t of allowedTabsByRole.admin) allowedTabs.add(t);
+        if (allowedTabs.size === 0) for (const t of allowedTabsByRole.driver) allowedTabs.add(t);
         if (!allowedTabs.has(activeTab)) {
           router.replace(defaultAppRoute as any);
         }
         return;
       }
 
-      if (area === "admin" && profile.role !== "admin") {
+      if (area === "admin" && !profile.isAdmin) {
         router.replace(defaultAppRoute as any);
         return;
       }
-      if (area === "host" && profile.role !== "host") {
+      if (area === "host" && !profile.isHost) {
         router.replace(defaultAppRoute as any);
         return;
       }
-      if (area === "driver" && profile.role !== "driver") {
+      if (area === "driver" && !profile.isDriver) {
         router.replace(defaultAppRoute as any);
       }
     } catch (err) {

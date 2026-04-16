@@ -67,15 +67,17 @@ export default function PaymentSuccessScreen() {
               </Text>
             </View>
 
-            <View style={styles.receiptRow}>
-              <Text style={styles.receiptLabel}>Paid with</Text>
-              <View style={styles.cardRow}>
-                <Ionicons name="card" size={16} color={Colors.textSecondary} />
-                <Text style={styles.receiptValue}>
-                  {(params.brand || "Card").charAt(0).toUpperCase() + (params.brand || "card").slice(1)} ****{params.last4 || "4242"}
-                </Text>
+            {params.last4 ? (
+              <View style={styles.receiptRow}>
+                <Text style={styles.receiptLabel}>Paid with</Text>
+                <View style={styles.cardRow}>
+                  <Ionicons name="card" size={16} color={Colors.textSecondary} />
+                  <Text style={styles.receiptValue}>
+                    {(params.brand || "Card").charAt(0).toUpperCase() + (params.brand || "card").slice(1)} ****{params.last4}
+                  </Text>
+                </View>
               </View>
-            </View>
+            ) : null}
 
             <View style={styles.receiptDivider} />
 

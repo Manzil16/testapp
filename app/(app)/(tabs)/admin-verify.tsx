@@ -27,6 +27,7 @@ import {
   Spacing,
   Shadows,
 } from "@/src/components";
+import { useAuth } from "@/src/features/auth/auth-context";
 import { useAdminVerify, type PendingChargerWithHost } from "@/src/hooks/useAdminVerify";
 import { getDetailImageUrl } from "@/src/services/imageService";
 import { useRefresh } from "@/src/hooks";
@@ -207,7 +208,6 @@ function ChargerVerifyCard({
             label="Reject"
             onPress={handleReject}
             loading={isRejecting}
-            danger
             style={styles.actionHalf}
           />
           <PrimaryCTA
@@ -229,6 +229,7 @@ function ChargerVerifyCard({
 }
 
 export default function AdminVerifyScreen() {
+  const { profile } = useAuth();
   const {
     pendingChargers,
     isLoading,
@@ -238,7 +239,7 @@ export default function AdminVerifyScreen() {
     isApproving,
     isRejecting,
   } = useAdminVerify();
-  const { refreshing, onRefresh } = useRefresh(refetch);
+  const { refreshing, onRefresh } = useRefresh(() => { refetch(); });
 
   const handleApprove = useCallback(
     async (chargerId: string, rubric: RubricState, notes: string) => {
@@ -263,6 +264,8 @@ export default function AdminVerifyScreen() {
     },
     [rejectCharger]
   );
+
+  if (!profile?.isAdmin) return null;
 
   return (
     <SafeAreaView style={styles.safe} edges={["bottom"]}>

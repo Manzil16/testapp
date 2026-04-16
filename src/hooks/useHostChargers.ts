@@ -38,8 +38,10 @@ export function useHostChargers(hostUserId?: string) {
   }, [verifications]);
 
   const saveMutation = useMutation({
-    mutationFn: (input: { chargerId?: string; payload: UpsertChargerInput }) =>
-      upsertCharger(input.chargerId || null, hostUserId!, input.payload),
+    mutationFn: (input: { chargerId?: string; payload: UpsertChargerInput }) => {
+      if (!hostUserId) return Promise.reject(new Error("Not authenticated"));
+      return upsertCharger(input.chargerId || null, hostUserId, input.payload);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["chargers", "host", hostUserId] });
     },
@@ -68,7 +70,11 @@ export function useHostChargers(hostUserId?: string) {
       saveCharger: (input: { chargerId?: string; payload: UpsertChargerInput }) =>
         saveMutation.mutateAsync(input),
       requestReverification: (charger: Charger) => reverifyMutation.mutateAsync(charger),
-      loadCharger: (chargerId: string) => getChargerById(chargerId).then((c) => c!),
+      loadCharger: (chargerId: string) =>
+        getChargerById(chargerId).then((c) => {
+          if (!c) throw new Error("Charger not found");
+          return c;
+        }),
       setError,
     },
   };

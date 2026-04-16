@@ -9,7 +9,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import { Colors, Radius, Shadows, Spacing } from "@/src/features/shared/theme";
+import { Colors, Radius, Shadows, Spacing, Typography } from "@/src/features/shared/theme";
 import { getThumbnailUrl } from "@/src/services/imageService";
 import { InfoPill } from "../ui/InfoPill";
 import { RatingStarsRow } from "../ui/RatingStarsRow";
@@ -68,19 +68,14 @@ export function ChargerCardPremium({
     if (typeof imageSource === "string") return getThumbnailUrl(imageSource);
     return imageSource;
   }, [imageSource, imageError]);
-  const resolvedImage = normalizedImage;
-
-  if (__DEV__ && resolvedImage && typeof resolvedImage === "string") {
-    console.log("[ChargerCard] rendering image URI:", resolvedImage);
-  }
 
   if (compact) {
     return (
       <TouchableOpacity onPress={onPress} activeOpacity={0.8} style={[styles.compactCard, style]}>
         <View style={styles.compactLeft}>
-          {resolvedImage ? (
+          {normalizedImage ? (
             <Image
-              source={typeof resolvedImage === "string" ? { uri: resolvedImage } : resolvedImage}
+              source={typeof normalizedImage === "string" ? { uri: normalizedImage } : normalizedImage}
               style={styles.compactImageThumb}
               resizeMode="cover"
               onError={() => setImageError(true)}
@@ -116,9 +111,9 @@ export function ChargerCardPremium({
     <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={[styles.card, style]}>
       {/* Photo area */}
       <View style={styles.imageContainer}>
-        {resolvedImage ? (
+        {normalizedImage ? (
           <Image
-            source={typeof resolvedImage === "string" ? { uri: resolvedImage } : resolvedImage}
+            source={typeof normalizedImage === "string" ? { uri: normalizedImage } : normalizedImage}
             style={styles.image}
             resizeMode="cover"
             onError={() => setImageError(true)}

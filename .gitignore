@@ -7,7 +7,10 @@ web-build
 android
 ios
 
-x# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+
+# Project instructions — contains real Supabase project URL, do not commit
+CLAUDE.md
 
 # dependencies
 node_modules/

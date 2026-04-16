@@ -5,7 +5,7 @@ import { Colors, Typography, Spacing } from "@/src/features/shared/theme";
 const STEPS = ["Requested", "Approved", "Arrived", "Charging", "Completed"] as const;
 
 interface BookingTimelineProps {
-  /** The booking status: requested, approved, declined, in_progress, completed, cancelled */
+  /** The booking status: requested, approved, declined, active, completed, cancelled */
   status: string;
   /** The arrival signal: en_route, arrived, charging, departed */
   currentStep?: string;
@@ -16,7 +16,7 @@ function resolveStepIndex(status: string, arrivalSignal?: string): number {
 
   if (s === "cancelled" || s === "declined") return -1;
   if (s === "completed") return 4;
-  if (s === "in_progress") {
+  if (s === "active") {
     const signal = (arrivalSignal || "").toLowerCase();
     if (signal === "charging" || signal === "departed") return 3;
     if (signal === "arrived") return 2;

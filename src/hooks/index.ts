@@ -9,6 +9,7 @@ export * from "./useHostDashboard";
 export * from "./useHostChargers";
 export * from "./useHostBookings";
 export * from "./useVehicleProfile";
+export * from "./useRoutePlanner";
 export * from "./useReviews";
 export * from "./useAvatarUpload";
 export * from "./useEntranceAnimation";

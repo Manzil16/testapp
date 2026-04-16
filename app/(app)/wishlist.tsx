@@ -109,8 +109,6 @@ export default function WishlistScreen() {
                       typeof c === "string" ? c : c.type
                     ) ?? [],
                     pricePerKwh: item.pricingPerKwh,
-                    rating: item.rating,
-                    reviewCount: item.reviewCount,
                     imageSource: item.images?.[0],
                     available: item.status === "approved",
                   }}
@@ -134,8 +132,8 @@ export default function WishlistScreen() {
                   icon="🤍"
                   title="No saved chargers"
                   message="Tap the heart icon on any charger to save it here for quick access."
-                  ctaLabel="Discover chargers"
-                  onCtaPress={() => router.push("/(app)/(tabs)/discover" as any)}
+                  actionLabel="Discover chargers"
+                  onAction={() => router.push("/(app)/(tabs)/discover" as any)}
                 />
               </Animated.View>
             ) : null
