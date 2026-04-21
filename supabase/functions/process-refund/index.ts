@@ -82,9 +82,10 @@ Deno.serve(async (req) => {
     } else if (pi.status === "succeeded") {
       // Payment was already captured (e.g. partial capture after session) —
       // issue a Stripe refund for the appropriate amount.
+      const capturedAmount = booking.actual_amount ?? booking.total_amount;
       const refundAmount = isFullRefund
-        ? Math.round(booking.total_amount * 100)
-        : Math.round(booking.total_amount * 100 * 0.5);
+        ? Math.round(capturedAmount * 100)
+        : Math.round(capturedAmount * 100 * 0.5);
       await stripe.refunds.create(
         { payment_intent: booking.stripe_payment_intent_id, amount: refundAmount },
         { idempotencyKey: `refund_${bookingId}` }

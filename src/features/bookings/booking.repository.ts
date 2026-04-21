@@ -12,6 +12,12 @@ function mapRow(row: Record<string, unknown>): Booking {
   if (effectiveStatus === "requested" && row.expires_at) {
     if (Date.now() > new Date(row.expires_at as string).getTime()) {
       effectiveStatus = "expired";
+      // Persist to DB so host can't approve the expired booking
+      void supabase
+        .from("bookings")
+        .update({ status: "expired", cancelled_at: new Date().toISOString() })
+        .eq("id", row.id as string)
+        .eq("status", "requested");
     }
   }
 
@@ -23,7 +29,7 @@ function mapRow(row: Record<string, unknown>): Booking {
     startTimeIso: row.start_time as string,
     endTimeIso: row.end_time as string,
     estimatedKWh: Number(row.estimated_kwh),
-    subtotalAmount: Number(row.subtotal_amount ?? row.total_amount),
+    subtotalAmount: Number(row.subtotal_amount ?? (Number(row.total_amount) - Number(row.platform_fee ?? 0))),
     totalAmount: Number(row.total_amount),
     platformFee: Number(row.platform_fee),
     note: effectiveStatus !== (row.status as string) ? "Expired — host did not respond" : (row.note as string),
@@ -98,8 +104,8 @@ export async function createBookingRequest(input: CreateBookingInput): Promise<B
   // Some environments may not have a verification_gates row yet. In that case,
   // rely on the live Stripe payment-method probe so booking is not blocked by
   // stale or missing gate data.
-  const emailVerified = gate?.emailVerified ?? true;
-  const phoneVerified = gate?.phoneVerified ?? true;
+  const emailVerified = gate?.emailVerified ?? false;
+  const phoneVerified = gate?.phoneVerified ?? false;
   const driverCleared = (gate?.driverCleared ?? false) || (emailVerified && phoneVerified && paymentMethodAdded);
 
   if (!driverCleared) {
@@ -238,7 +244,7 @@ export async function updateBookingStatus(
   const update: Record<string, unknown> = { status };
   if (note !== undefined) update.note = note;
   if (cancellationReason !== undefined) update.cancellation_reason = cancellationReason;
-  if (status === "cancelled") update.cancelled_at = new Date().toISOString();
+  if (["cancelled", "declined", "missed", "expired"].includes(status)) update.cancelled_at = new Date().toISOString();
 
   const { error } = await supabase.from("bookings").update(update).eq("id", bookingId);
   if (error) throw error;
@@ -261,6 +267,7 @@ export async function updateArrivalSignal(
   const update: Record<string, unknown> = { arrival_signal: signal };
   if (signal === "arrived") {
     update.session_started_at = new Date().toISOString();
+    update.status = "active";
   }
   const { error } = await supabase
     .from("bookings")

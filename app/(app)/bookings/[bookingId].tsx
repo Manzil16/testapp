@@ -20,7 +20,7 @@ import {
 } from "@/src/components";
 import { CountdownTimer } from "@/src/components/ui/CountdownTimer";
 import { useBookingDetail } from "@/src/hooks/useBookingDetail";
-import { updateBookingStatus, endSession } from "@/src/features/bookings/booking.repository";
+import { updateBookingStatus, updateArrivalSignal, endSession } from "@/src/features/bookings/booking.repository";
 import { cancelPayment, processRefund } from "@/src/services/stripeService";
 import type { BookingStatus } from "@/src/features/bookings/booking.types";
 
@@ -46,6 +46,8 @@ export default function BookingDetailScreen() {
   const [actionLoading, setActionLoading] = useState(false);
   const [showKwhModal, setShowKwhModal] = useState(false);
   const [kwhEntry, setKwhEntry] = useState("");
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
 
   const config = STATUS_CONFIG[booking?.status ?? "requested"] ?? STATUS_CONFIG.requested;
 
@@ -54,11 +56,39 @@ export default function BookingDetailScreen() {
     return Math.max(0, (new Date(booking.startTimeIso).getTime() - Date.now()) / (1000 * 60 * 60));
   }, [booking]);
 
-  const handleCancel = useCallback(async () => {
+  const CANCEL_REASONS = [
+    "Changed plans",
+    "Found a closer charger",
+    "Vehicle issue",
+    "Host not responding",
+    "Other",
+  ];
+
+  const handleCancel = useCallback(() => {
+    if (!booking) return;
+    setCancelReason("");
+    setShowCancelModal(true);
+  }, [booking]);
+
+  const handleArrived = useCallback(async () => {
     if (!booking) return;
     setActionLoading(true);
     try {
-      await updateBookingStatus(booking.id, "cancelled");
+      await updateArrivalSignal(booking.id, "arrived");
+      refetch();
+    } catch (err) {
+      Alert.alert("Error", err instanceof Error ? err.message : "Could not signal arrival. Please try again.");
+    } finally {
+      setActionLoading(false);
+    }
+  }, [booking, refetch]);
+
+  const confirmCancel = useCallback(async () => {
+    if (!booking) return;
+    setShowCancelModal(false);
+    setActionLoading(true);
+    try {
+      // Release Stripe hold FIRST — if this fails, booking stays active so driver isn't stranded
       if (booking.stripePaymentIntentId) {
         if (hoursUntilStart > 2) {
           await cancelPayment(booking.stripePaymentIntentId);
@@ -66,11 +96,14 @@ export default function BookingDetailScreen() {
           await processRefund(booking.id);
         }
       }
+      await updateBookingStatus(booking.id, "cancelled", undefined, cancelReason || "Driver cancelled");
       refetch();
+    } catch (err) {
+      Alert.alert("Cancellation failed", err instanceof Error ? err.message : "Please try again.");
     } finally {
       setActionLoading(false);
     }
-  }, [booking, hoursUntilStart, refetch]);
+  }, [booking, hoursUntilStart, cancelReason, refetch]);
 
   const performEndSession = useCallback(async (kwh: number) => {
     if (!booking) return;
@@ -78,6 +111,8 @@ export default function BookingDetailScreen() {
     try {
       await endSession(booking.id, kwh);
       refetch();
+    } catch (err) {
+      Alert.alert("Session end failed", err instanceof Error ? err.message : "Please try again.");
     } finally {
       setActionLoading(false);
     }
@@ -106,9 +141,18 @@ export default function BookingDetailScreen() {
   }, [booking, performEndSession]);
 
   const confirmKwhAndEnd = useCallback(async () => {
+    const parsed = Number(kwhEntry);
+    if (isNaN(parsed) || parsed <= 0) {
+      Alert.alert("Invalid amount", "Please enter a valid kWh value greater than 0.");
+      return;
+    }
+    const maxReasonableKwh = (booking?.estimatedKWh ?? 200) * 2;
+    if (parsed > maxReasonableKwh) {
+      Alert.alert("Value too high", `${parsed} kWh seems too high. Please double-check.`);
+      return;
+    }
     setShowKwhModal(false);
-    const kwh = Math.max(0, Number(kwhEntry) || (booking?.estimatedKWh ?? 0));
-    await performEndSession(kwh);
+    await performEndSession(parsed);
   }, [kwhEntry, booking, performEndSession]);
 
   const handleDirections = useCallback(() => {
@@ -290,7 +334,7 @@ export default function BookingDetailScreen() {
             <PremiumCard style={[styles.section, { backgroundColor: Colors.errorLight }]}>
               <Ionicons name="alert-circle" size={24} color={Colors.error} />
               <Text style={[Typography.body, { marginTop: Spacing.sm }]}>
-                You didn't arrive within the 15-minute grace period.
+                You didn&apos;t arrive within the 15-minute grace period.
                 The hold on your card has been released.
               </Text>
             </PremiumCard>
@@ -301,7 +345,7 @@ export default function BookingDetailScreen() {
           <Animated.View entering={FadeInDown.delay(300).duration(260)}>
             <PremiumCard style={styles.section}>
               <Text style={Typography.body}>
-                The host didn't respond within 24 hours. The hold on your card has
+                The host didn&apos;t respond within 24 hours. The hold on your card has
                 been fully released.
               </Text>
             </PremiumCard>
@@ -375,6 +419,39 @@ export default function BookingDetailScreen() {
         </View>
       </Modal>
 
+      {/* Cancel reason modal */}
+      <Modal visible={showCancelModal} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalBox}>
+            <Text style={styles.modalTitle}>Cancel booking</Text>
+            <Text style={styles.modalBody}>Why are you cancelling?</Text>
+            {CANCEL_REASONS.map((reason) => (
+              <Pressable
+                key={reason}
+                style={[styles.reasonRow, cancelReason === reason && styles.reasonRowSelected]}
+                onPress={() => setCancelReason(reason)}
+              >
+                <Text style={[styles.reasonText, cancelReason === reason && styles.reasonTextSelected]}>
+                  {reason}
+                </Text>
+              </Pressable>
+            ))}
+            <View style={styles.modalActions}>
+              <Pressable style={styles.modalCancelBtn} onPress={() => setShowCancelModal(false)}>
+                <Text style={styles.modalCancelText}>Back</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.modalConfirmBtn, !cancelReason && styles.modalConfirmBtnDisabled]}
+                onPress={confirmCancel}
+                disabled={!cancelReason}
+              >
+                <Text style={styles.modalConfirmText}>Confirm cancel</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* Bottom action bar */}
       <View style={[styles.actionBar, { paddingBottom: insets.bottom + Spacing.md }]}>
         {booking.status === "requested" && (
@@ -394,11 +471,19 @@ export default function BookingDetailScreen() {
               style={styles.actionHalf}
             />
             <PrimaryCTA
-              label="Get directions"
-              onPress={handleDirections}
+              label="I've arrived"
+              onPress={handleArrived}
+              loading={actionLoading}
               style={styles.actionHalf}
             />
           </View>
+        )}
+        {booking.status === "approved" && (
+          <SecondaryButton
+            label="Get directions"
+            onPress={handleDirections}
+            style={{ marginTop: Spacing.xs }}
+          />
         )}
         {booking.status === "active" && (
           <PrimaryCTA
@@ -584,5 +669,28 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "600",
     color: Colors.textInverse,
+  },
+  modalConfirmBtnDisabled: {
+    opacity: 0.4,
+  },
+  reasonRow: {
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    marginBottom: Spacing.xs,
+  },
+  reasonRowSelected: {
+    borderColor: Colors.accent,
+    backgroundColor: Colors.accent + "18",
+  },
+  reasonText: {
+    fontSize: 14,
+    color: Colors.textPrimary,
+  },
+  reasonTextSelected: {
+    color: Colors.accent,
+    fontWeight: "600",
   },
 });

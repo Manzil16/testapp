@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Redirect } from "expo-router";
 import {
   FlatList,
   Pressable,
@@ -229,7 +230,7 @@ export default function AdminOverviewScreen() {
     [expandedId]
   );
 
-  if (!profile?.isAdmin) return null;
+  if (!profile?.isAdmin) return <Redirect href="/(app)/(tabs)/discover" />;
 
   return (
     <SafeAreaView style={styles.safe} edges={["bottom"]}>

@@ -64,8 +64,8 @@ export async function signUpWithEmail(
         email: normalizedEmail,
         display_name: normalizedName,
         role,
-        is_driver: role === "driver" || role === "admin",
-        is_host: role === "host" || role === "admin",
+        is_driver: role === "driver",
+        is_host: role === "host",
         is_admin: role === "admin",
       });
   }

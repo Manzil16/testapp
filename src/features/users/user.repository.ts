@@ -2,14 +2,15 @@ import { supabase } from "../../lib/supabase";
 import type { AppRole, UpsertUserProfileInput, UserProfile } from "./user.types";
 
 function mapRow(row: Record<string, unknown>): UserProfile {
+  const role = row.role as AppRole;
   return {
     id: row.id as string,
     email: row.email as string,
     displayName: row.display_name as string,
-    role: row.role as AppRole,
-    isDriver: (row.is_driver as boolean) ?? true,
-    isHost: (row.is_host as boolean) ?? false,
-    isAdmin: (row.is_admin as boolean) ?? false,
+    role,
+    isDriver: role === "driver",
+    isHost: role === "host",
+    isAdmin: role === "admin",
     isSuspended: (row.is_suspended as boolean) ?? false,
     phone: (row.phone as string) || undefined,
     avatarUrl: (row.avatar_url as string) || undefined,
@@ -29,8 +30,8 @@ export async function upsertUserProfile(
     email: payload.email,
     display_name: payload.displayName,
     role: payload.role,
-    is_driver: payload.isDriver ?? (payload.role === "driver" || payload.role === "admin"),
-    is_host: payload.isHost ?? (payload.role === "host" || payload.role === "admin"),
+    is_driver: payload.isDriver ?? (payload.role === "driver"),
+    is_host: payload.isHost ?? (payload.role === "host"),
     is_admin: payload.role === "admin",
     phone: payload.phone || null,
     preferred_reserve_percent: payload.preferredReservePercent ?? 12,

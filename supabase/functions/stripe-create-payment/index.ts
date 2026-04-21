@@ -81,6 +81,10 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: "Method not allowed" }, 405);
   }
 
+  if (!req.headers.get("Authorization")) {
+    return jsonResponse({ error: "Unauthorized" }, 401);
+  }
+
   const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
   if (!stripeKey) {
     return jsonResponse({ stripeNotConfigured: true });

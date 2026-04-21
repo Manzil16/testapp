@@ -100,6 +100,8 @@ export async function createPaymentIntent(input: {
   amount: number; // in cents
   hostStripeAccountId: string;
 }): Promise<PaymentIntentResult> {
+  const { data: sessionData } = await supabase.auth.getSession();
+  const accessToken = sessionData?.session?.access_token;
   const { data, error } = await supabase.functions.invoke("stripe-create-payment", {
     body: {
       bookingId: input.bookingId,
@@ -108,6 +110,7 @@ export async function createPaymentIntent(input: {
       platformFeePercent: AppConfig.PLATFORM_FEE_PERCENT,
       hostFeePercent: AppConfig.HOST_FEE_PERCENT,
     },
+    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
   });
   if (data?.stripeNotConfigured) throw new StripeNotConfiguredError();
   if (error) {
@@ -125,8 +128,11 @@ export async function createPaymentIntent(input: {
  * Capture a previously authorized PaymentIntent (host approves booking).
  */
 export async function capturePayment(paymentIntentId: string): Promise<void> {
+  const { data: sd } = await supabase.auth.getSession();
+  const token = sd?.session?.access_token;
   const { error } = await supabase.functions.invoke("stripe-capture-payment", {
     body: { paymentIntentId },
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   });
   if (error) throw new Error(error.message || "Failed to capture payment");
 }
@@ -135,8 +141,11 @@ export async function capturePayment(paymentIntentId: string): Promise<void> {
  * Cancel a PaymentIntent (host declines or booking expires — releases the hold).
  */
 export async function cancelPayment(paymentIntentId: string): Promise<void> {
+  const { data: sd } = await supabase.auth.getSession();
+  const token = sd?.session?.access_token;
   const { error } = await supabase.functions.invoke("stripe-cancel-payment", {
     body: { paymentIntentId },
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   });
   if (error) throw new Error(error.message || "Failed to cancel payment");
 }
@@ -149,8 +158,11 @@ export async function processRefund(bookingId: string): Promise<{
   refunded: boolean;
   fullRefund?: boolean;
 }> {
+  const { data: sd } = await supabase.auth.getSession();
+  const token = sd?.session?.access_token;
   const { data, error } = await supabase.functions.invoke("process-refund", {
     body: { bookingId },
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   });
   if (error) throw new Error(error.message || "Failed to process refund");
   return data as { refunded: boolean; fullRefund?: boolean };
@@ -164,8 +176,11 @@ export async function reconcileAndCapture(
   bookingId: string,
   actualKwh: number
 ): Promise<{ actualTotal: number; hostPayout: number }> {
+  const { data: sd } = await supabase.auth.getSession();
+  const token = sd?.session?.access_token;
   const { data, error } = await supabase.functions.invoke("stripe-reconcile-payment", {
     body: { bookingId, actualKwh },
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   });
   if (error) throw new Error(error.message || "Failed to reconcile payment");
   return data as { actualTotal: number; hostPayout: number };
@@ -177,7 +192,8 @@ export async function reconcileAndCapture(
  * Requires the stripe-setup-payment-method edge function to be deployed.
  */
 export async function setupPaymentMethod(userId: string): Promise<{ sessionUrl: string }> {
-  const { data: { session } } = await supabase.auth.getSession();
+  const { data: authData } = await supabase.auth.getSession();
+  const session = authData?.session;
   const { data, error } = await supabase.functions.invoke("stripe-setup-payment-method", {
     body: { userId },
     headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : undefined,
@@ -194,7 +210,8 @@ export async function setupPaymentMethod(userId: string): Promise<{ sessionUrl: 
  * returning from Stripe Checkout.
  */
 export async function verifyPaymentMethodSetup(userId: string): Promise<PaymentSetupStatusResult> {
-  const { data: { session } } = await supabase.auth.getSession();
+  const { data: authData } = await supabase.auth.getSession();
+  const session = authData?.session;
   const { data, error } = await supabase.functions.invoke("payment-setup-complete", {
     body: { userId },
     headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : undefined,

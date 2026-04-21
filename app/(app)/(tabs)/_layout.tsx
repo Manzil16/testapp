@@ -168,7 +168,7 @@ export default function AppTabsLayout() {
         options={{
           ...sharedHeaderOptions,
           title: "Trips",
-          href: isDriver ? undefined : null,
+          href: null,
           tabBarIcon: icon("map"),
         }}
       />

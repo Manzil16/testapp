@@ -6,6 +6,20 @@ import { getUserProfile } from "../features/users/user.repository";
 import type { Booking } from "../features/bookings/booking.types";
 import type { Charger } from "../features/chargers/charger.types";
 
+function isOcmId(id: string | undefined): boolean {
+  return !!id && id.startsWith("ocm-");
+}
+
+function findOcmChargerInCache(queryClient: ReturnType<typeof useQueryClient>, chargerId: string): Charger | null {
+  const entries = queryClient.getQueriesData<Charger[]>({ queryKey: ["chargers", "ocm"] });
+  for (const [, data] of entries) {
+    if (!data) continue;
+    const match = data.find((c) => c.id === chargerId);
+    if (match) return match;
+  }
+  return null;
+}
+
 const ACTIVE_STATUSES = new Set(["requested", "approved", "active"]);
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
@@ -52,17 +66,23 @@ interface RequestBookingInput {
 
 export function useChargerDetail(chargerId?: string, driverUserId?: string) {
   const queryClient = useQueryClient();
+  const isOcm = isOcmId(chargerId);
 
   const chargerQuery = useQuery({
     queryKey: ["charger", chargerId],
-    queryFn: () => getChargerById(chargerId!),
+    queryFn: async () => {
+      if (isOcm) {
+        return findOcmChargerInCache(queryClient, chargerId!);
+      }
+      return getChargerById(chargerId!);
+    },
     enabled: Boolean(chargerId),
   });
 
   const reviewsQuery = useQuery({
     queryKey: ["reviews", chargerId],
     queryFn: () => listReviewsByCharger(chargerId!),
-    enabled: Boolean(chargerId),
+    enabled: Boolean(chargerId) && !isOcm,
   });
 
   const hostId = chargerQuery.data?.hostUserId;
@@ -72,7 +92,7 @@ export function useChargerDetail(chargerId?: string, driverUserId?: string) {
       if (!hostId) return null;
       return getUserProfile(hostId);
     },
-    enabled: Boolean(hostId),
+    enabled: Boolean(hostId) && hostId !== "ocm",
   });
 
   // Fetch driver's active booking for this charger
@@ -85,7 +105,7 @@ export function useChargerDetail(chargerId?: string, driverUserId?: string) {
         (b) => b.chargerId === chargerId && ACTIVE_STATUSES.has(b.status)
       ) ?? null;
     },
-    enabled: Boolean(driverUserId) && Boolean(chargerId),
+    enabled: Boolean(driverUserId) && Boolean(chargerId) && !isOcm,
   });
 
   const reviews = reviewsQuery.data ?? [];
@@ -118,13 +138,14 @@ export function useChargerDetail(chargerId?: string, driverUserId?: string) {
   return {
     data: {
       charger: chargerQuery.data ?? null,
-      hostName: hostQuery.data?.displayName ?? "Host",
+      hostName: isOcm ? "Public network" : (hostQuery.data?.displayName ?? "Host"),
       hostStripeAccountId: hostQuery.data?.stripeAccountId ?? null,
       reviews,
       averageRating,
       totalReviews,
       availabilityStatus: "available" as Booking["status"] | "available",
       activeBooking: driverBookingsQuery.data ?? null,
+      isOcm,
     },
     isLoading: chargerQuery.isLoading,
     error: chargerQuery.error?.message || null,

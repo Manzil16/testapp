@@ -1,8 +1,11 @@
 import { useMemo, useRef } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Keyboard,
+  Linking,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -172,6 +175,27 @@ function StatPill({ icon, label }: { icon: keyof typeof Ionicons.glyphMap; label
   );
 }
 
+// ─── Maps deep link ───────────────────────────────────────────────────────────
+
+async function openInMaps(latitude: number, longitude: number, label?: string) {
+  const encodedLabel = label ? encodeURIComponent(label) : "";
+  const appleUrl = `maps://?daddr=${latitude},${longitude}${encodedLabel ? `&q=${encodedLabel}` : ""}`;
+  const googleUrl = `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}${encodedLabel ? `&destination_place_id=${encodedLabel}` : ""}`;
+
+  try {
+    if (Platform.OS === "ios") {
+      const canOpenApple = await Linking.canOpenURL(appleUrl);
+      if (canOpenApple) {
+        await Linking.openURL(appleUrl);
+        return;
+      }
+    }
+    await Linking.openURL(googleUrl);
+  } catch {
+    Alert.alert("Could not open Maps", "No maps app is available to handle directions.");
+  }
+}
+
 // ─── Charging stop card ───────────────────────────────────────────────────────
 
 function StopCard({ stop, index }: { stop: RecommendedStop; index: number }) {
@@ -184,6 +208,10 @@ function StopCard({ stop, index }: { stop: RecommendedStop; index: number }) {
     if (isVg) {
       router.push(`/(app)/chargers/${stop.chargerId}` as any);
     }
+  }
+
+  function handleNavigate() {
+    openInMaps(stop.latitude, stop.longitude, stop.name);
   }
 
   return (
@@ -233,11 +261,17 @@ function StopCard({ stop, index }: { stop: RecommendedStop; index: number }) {
             ? "Free"
             : "Pricing via network app"}
         </Text>
-        {isVg && (
-          <Pressable style={styles.bookBtn} onPress={handleBook}>
-            <Text style={styles.bookBtnText}>Book</Text>
+        <View style={styles.stopActions}>
+          <Pressable style={styles.navigateBtn} onPress={handleNavigate}>
+            <Ionicons name="navigate" size={13} color={Colors.accent} />
+            <Text style={styles.navigateBtnText}>Navigate</Text>
           </Pressable>
-        )}
+          {isVg && (
+            <Pressable style={styles.bookBtn} onPress={handleBook}>
+              <Text style={styles.bookBtnText}>Book</Text>
+            </Pressable>
+          )}
+        </View>
       </View>
     </View>
   );
@@ -678,6 +712,21 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.sm,
   },
   stopPrice: { ...Typography.caption, color: Colors.textSecondary, flex: 1 },
+  stopActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+  },
+  navigateBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: Colors.accentLight,
+    borderRadius: Radius.pill,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs + 2,
+  },
+  navigateBtnText: { ...Typography.caption, color: Colors.accentDark, fontWeight: "700" },
   bookBtn: {
     backgroundColor: Colors.accent,
     borderRadius: Radius.pill,

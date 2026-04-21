@@ -360,7 +360,7 @@ export default function DriverBookingsScreen() {
                           <Text style={styles.pendingNoteText}>Waiting for host to approve your booking</Text>
                         </View>
                       )}
-                      <BookingTimeline status={item.status} currentStep={item.arrivalSignal} />
+                      <BookingTimeline status={item.status} currentStep={item.arrivalSignal ?? undefined} />
                       {isPast && reviewedRating ? (
                         <View style={styles.reviewedRow}>
                           <InfoPill label={`${reviewedRating.toFixed(1)}★ Reviewed`} variant="success" />

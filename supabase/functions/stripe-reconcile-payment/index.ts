@@ -19,6 +19,11 @@ Deno.serve(async (req) => {
     );
   }
 
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  }
+
   const stripeKey = Deno.env.get("STRIPE_SECRET_KEY")!;
 
   try {
@@ -35,7 +40,7 @@ Deno.serve(async (req) => {
 
     const { data: booking, error: bookingError } = await supabase
       .from("bookings")
-      .select("*, charger:chargers(pricing_per_kwh)")
+      .select("*, charger:chargers(price_per_kwh)")
       .eq("id", bookingId)
       .single();
 
@@ -69,7 +74,7 @@ Deno.serve(async (req) => {
     const platformFeePercent = parseFloat(feeConfig.value);
     const hostFeePercent = parseFloat(hostFeeConfig.value);
 
-    const pricePerKwh = parseFloat(booking.charger.pricing_per_kwh);
+    const pricePerKwh = parseFloat(booking.charger.price_per_kwh);
     const actualSubtotal = actualKwh * pricePerKwh;
     const platformFee = actualSubtotal * (platformFeePercent / 100);
     const actualTotal = actualSubtotal + platformFee;

@@ -29,7 +29,7 @@ function mapRow(row: Record<string, unknown>): Charger {
     availabilityWindow: row.availability_window as ChargerAvailabilityWindow | undefined,
     images: (row.images as string[]) || [],
     status: row.status as ChargerStatus,
-    verificationScore: row.verification_score as number,
+    verificationScore: (row.verification_score as number) ?? 0,
     createdAtIso: row.created_at as string,
     updatedAtIso: row.updated_at as string,
   };
@@ -62,7 +62,17 @@ export async function upsertCharger(
     throw new Error("Host verification required. Please complete ID and Stripe onboarding before listing a charger.");
   }
 
-  const row = {
+  if (chargerId) {
+    const { data: existing, error: existingError } = await supabase
+      .from("chargers")
+      .select("host_id")
+      .eq("id", chargerId)
+      .single();
+    if (existingError || !existing) throw new Error("Charger not found.");
+    if (existing.host_id !== hostUserId) throw new Error("You do not own this charger.");
+  }
+
+  const row: Record<string, unknown> = {
     ...(chargerId ? { id: chargerId } : {}),
     host_id: hostUserId,
     name: payload.name,
@@ -79,12 +89,16 @@ export async function upsertCharger(
     availability_window: (payload.availabilityWindow as unknown as Json) ?? null,
     images: payload.images || [],
     status,
-    verification_score: status === "approved" ? AppConfig.VERIFICATION.defaultApprovedScore : AppConfig.VERIFICATION.defaultPendingScore,
   };
+
+  if (!chargerId) {
+    row.verification_score = status === "approved" ? AppConfig.VERIFICATION.defaultApprovedScore : AppConfig.VERIFICATION.defaultPendingScore;
+  }
 
   const { data, error } = await supabase
     .from("chargers")
-    .upsert(row)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .upsert(row as any)
     .select("id")
     .single();
   if (error) throw error;

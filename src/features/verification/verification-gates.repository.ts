@@ -64,7 +64,8 @@ export async function upsertVerificationGate(
 
   const { error } = await supabase
     .from("verification_gates")
-    .upsert(row, { onConflict: "user_id" });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .upsert(row as any, { onConflict: "user_id" });
   if (error) throw error;
 }
 

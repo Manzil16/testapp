@@ -62,7 +62,14 @@ export default function CheckoutScreen() {
   const [processing, setProcessing] = useState(false);
 
   const handleAuthorizePayment = useCallback(async () => {
-    if (!user || !params.chargerId || !params.hostUserId || !totalAmount) return;
+    if (!user || !params.chargerId || !params.hostUserId || !totalAmount) {
+      Alert.alert("Missing information", "Required booking details are missing. Please go back and try again.");
+      return;
+    }
+    if (!params.hostStripeAccountId) {
+      Alert.alert("Payment unavailable", "This host has not finished setting up payments. Please choose another charger.");
+      return;
+    }
 
     setProcessing(true);
     let createdBookingId: string | null = null;
@@ -120,7 +127,7 @@ export default function CheckoutScreen() {
       // slot is freed and no orphaned record blocks future bookings.
       if (createdBookingId) {
         try {
-          await updateBookingStatus(createdBookingId, "cancelled");
+          await updateBookingStatus(createdBookingId, "cancelled", undefined, "Payment authorization failed");
         } catch {
           // Cancellation failed — booking will auto-expire after 24h via expires_at.
         }

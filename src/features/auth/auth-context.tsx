@@ -51,14 +51,15 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 function mapProfile(row: Record<string, unknown>): UserProfile {
+  const role = row.role as AppRole;
   return {
     id: row.id as string,
     email: row.email as string,
     displayName: row.display_name as string,
-    role: row.role as AppRole,
-    isDriver: (row.is_driver ?? false) as boolean,
-    isHost: (row.is_host ?? false) as boolean,
-    isAdmin: (row.is_admin ?? false) as boolean,
+    role,
+    isDriver: role === "driver",
+    isHost: role === "host",
+    isAdmin: role === "admin",
     phone: (row.phone as string) || undefined,
     avatarUrl: (row.avatar_url as string) || undefined,
     preferredReservePercent: row.preferred_reserve_percent as number,
@@ -344,8 +345,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             email,
             display_name: displayName,
             role,
-            is_driver: role === "driver" || role === "admin",
-            is_host: role === "host" || role === "admin",
+            is_driver: role === "driver",
+            is_host: role === "host",
             is_admin: role === "admin",
           })
           .select()
@@ -383,8 +384,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           updatePayload.preferred_reserve_percent = patch.preferredReservePercent;
         if (patch.role !== undefined) {
           updatePayload.role = patch.role;
-          updatePayload.is_driver = patch.role === "driver" || patch.role === "admin";
-          updatePayload.is_host = patch.role === "host" || patch.role === "admin";
+          updatePayload.is_driver = patch.role === "driver";
+          updatePayload.is_host = patch.role === "host";
           updatePayload.is_admin = patch.role === "admin";
         }
 
@@ -408,8 +409,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             ...(patch.preferredReservePercent !== undefined && { preferredReservePercent: patch.preferredReservePercent }),
             ...(patch.role !== undefined && {
               role: patch.role,
-              isDriver: patch.role === "driver" || patch.role === "admin",
-              isHost: patch.role === "host" || patch.role === "admin",
+              isDriver: patch.role === "driver",
+              isHost: patch.role === "host",
               isAdmin: patch.role === "admin",
             }),
           };

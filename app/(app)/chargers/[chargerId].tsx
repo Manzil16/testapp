@@ -4,6 +4,8 @@ import { useFocusEffect } from "@react-navigation/native";
 import {
   Alert,
   FlatList,
+  Linking,
+  Platform,
   Share,
   StyleSheet,
   Text,
@@ -60,7 +62,8 @@ export default function ChargerDetailRoute() {
   const userId = useMemo(() => user?.id, [user?.id]);
 
   const { data, isLoading, error, refresh } = useChargerDetail(chargerId, userId);
-  const { data: chargerStats } = useChargerStats(chargerId);
+  const statsChargerId = data.isOcm ? "" : (chargerId ?? "");
+  const { data: chargerStats } = useChargerStats(statsChargerId);
 
   // Fetch host profile for host section
   const hostProfileQuery = useQuery({
@@ -69,7 +72,7 @@ export default function ChargerDetailRoute() {
       if (!data.charger?.hostUserId) return null;
       return getUserProfile(data.charger.hostUserId);
     },
-    enabled: !!data.charger?.hostUserId,
+    enabled: !!data.charger?.hostUserId && !data.isOcm,
   });
   const hostProfile = hostProfileQuery.data;
 
@@ -86,6 +89,7 @@ export default function ChargerDetailRoute() {
   const [estimatedKWh, setEstimatedKWh] = useState<number>(AppConfig.BOOKING_DEFAULTS.defaultEstimatedKwh);
   const charger = data.charger;
   const activeBooking = data.activeBooking;
+  const isOcm = data.isOcm;
   const bookingValidationError = getBookingAvailabilityError(charger, startDate, endDate);
 
   const distanceKm = useMemo(() => {
@@ -270,8 +274,8 @@ export default function ChargerDetailRoute() {
           </PremiumCard>
         </Animated.View>
 
-        {/* Stats Row */}
-        {chargerStats && (
+        {/* Stats Row — VehicleGrid-only */}
+        {!isOcm && chargerStats && (
           <Animated.View entering={FadeInDown.delay(60).duration(260)}>
             <View style={styles.statsRow}>
               <View style={styles.statItem}>
@@ -296,13 +300,15 @@ export default function ChargerDetailRoute() {
           </Animated.View>
         )}
 
-        {/* Availability Bar */}
-        <Animated.View entering={FadeInDown.delay(70).duration(260)}>
-          <PremiumCard style={styles.mainCard}>
-            <SectionTitle title="Today's availability" topSpacing={Spacing.xs} />
-            <AvailabilityBar chargerId={chargerId} />
-          </PremiumCard>
-        </Animated.View>
+        {/* Availability Bar — VehicleGrid-only */}
+        {!isOcm && (
+          <Animated.View entering={FadeInDown.delay(70).duration(260)}>
+            <PremiumCard style={styles.mainCard}>
+              <SectionTitle title="Today's availability" topSpacing={Spacing.xs} />
+              <AvailabilityBar chargerId={chargerId} />
+            </PremiumCard>
+          </Animated.View>
+        )}
 
         {/* Amenities */}
         <Animated.View entering={FadeInDown.delay(80).duration(260)}>
@@ -368,7 +374,21 @@ export default function ChargerDetailRoute() {
 
         {/* Active Booking Banner or Booking Form */}
         <Animated.View entering={FadeInDown.delay(160).duration(260)}>
-          {activeBooking ? (
+          {isOcm ? (
+            <PremiumCard style={styles.mainCard}>
+              <SectionTitle title="Public charger" topSpacing={Spacing.xs} />
+              <View style={styles.ocmBanner}>
+                <Ionicons name="globe-outline" size={22} color={Colors.primaryDark} />
+                <View style={{ flex: 1 }}>
+                  <Text style={Typography.cardTitle}>Open Charge Map listing</Text>
+                  <Text style={[Typography.caption, { marginTop: 2 }]}>
+                    This charger isn&apos;t bookable through VehicleGrid. Use your network
+                    operator&apos;s app on arrival — pricing and availability vary by network.
+                  </Text>
+                </View>
+              </View>
+            </PremiumCard>
+          ) : activeBooking ? (
             <PremiumCard style={styles.mainCard}>
               <SectionTitle title="Your Active Booking" topSpacing={Spacing.xs} />
               <View style={styles.activeBookingBanner}>
@@ -464,7 +484,7 @@ export default function ChargerDetailRoute() {
               {charger.availabilityNote ? (
                 <View style={styles.hostQuote}>
                   <Text style={[Typography.body, { fontStyle: "italic" }]}>
-                    "{charger.availabilityNote}"
+                    &quot;{charger.availabilityNote}&quot;
                   </Text>
                 </View>
               ) : null}
@@ -472,7 +492,8 @@ export default function ChargerDetailRoute() {
           </Animated.View>
         )}
 
-        {/* Reviews */}
+        {/* Reviews — VehicleGrid-only */}
+        {!isOcm && (
         <Animated.View entering={FadeInDown.delay(200).duration(260)}>
           <PremiumCard style={styles.mainCard}>
             <SectionTitle
@@ -507,8 +528,10 @@ export default function ChargerDetailRoute() {
             />
           </PremiumCard>
         </Animated.View>
+        )}
 
-        {/* Cancellation policy (Airbnb-style) */}
+        {/* Cancellation policy — VehicleGrid-only */}
+        {!isOcm && (
         <Animated.View entering={FadeInDown.delay(240).duration(260)}>
           <PremiumCard style={styles.mainCard}>
             <SectionTitle title="Cancellation Policy" topSpacing={Spacing.xs} />
@@ -526,6 +549,7 @@ export default function ChargerDetailRoute() {
             </View>
           </PremiumCard>
         </Animated.View>
+        )}
       </ScreenContainer>
 
       <StickyActionBar>
@@ -541,7 +565,13 @@ export default function ChargerDetailRoute() {
               </Text>
             )}
           </View>
-          {activeBooking ? (
+          {isOcm ? (
+            <GradientButton
+              label="Navigate"
+              onPress={() => openInMaps(charger.latitude, charger.longitude, charger.name)}
+              style={styles.bookBtn}
+            />
+          ) : activeBooking ? (
             <SecondaryButton
               label="View Bookings"
               onPress={() => router.push("/(app)/(tabs)/bookings" as any)}
@@ -559,6 +589,25 @@ export default function ChargerDetailRoute() {
       </StickyActionBar>
     </SafeAreaView>
   );
+}
+
+async function openInMaps(latitude: number, longitude: number, label?: string) {
+  const encodedLabel = label ? encodeURIComponent(label) : "";
+  const appleUrl = `maps://?daddr=${latitude},${longitude}${encodedLabel ? `&q=${encodedLabel}` : ""}`;
+  const googleUrl = `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`;
+
+  try {
+    if (Platform.OS === "ios") {
+      const canOpenApple = await Linking.canOpenURL(appleUrl);
+      if (canOpenApple) {
+        await Linking.openURL(appleUrl);
+        return;
+      }
+    }
+    await Linking.openURL(googleUrl);
+  } catch {
+    Alert.alert("Could not open Maps", "No maps app is available to handle directions.");
+  }
 }
 
 function formatResponseTime(minutes: number | null | undefined): string {
@@ -754,6 +803,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: Spacing.md,
     backgroundColor: Colors.surfaceAlt,
+    borderRadius: Radius.md,
+    padding: Spacing.md,
+    marginTop: Spacing.sm,
+  },
+  ocmBanner: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: Spacing.md,
+    backgroundColor: Colors.primaryLight,
     borderRadius: Radius.md,
     padding: Spacing.md,
     marginTop: Spacing.sm,

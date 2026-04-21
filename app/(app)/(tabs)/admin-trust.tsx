@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Redirect } from "expo-router";
 import { FlatList, RefreshControl, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -92,6 +93,7 @@ export default function AdminTrustTabScreen() {
 
   const refresh = async () => {
     await chargersQuery.refetch();
+    await hostsQuery.refetch();
   };
   const { refreshing, onRefresh } = useRefresh(refresh);
 
@@ -152,7 +154,7 @@ export default function AdminTrustTabScreen() {
     }
   };
 
-  if (!profile?.isAdmin) return null;
+  if (!profile?.isAdmin) return <Redirect href="/(app)/(tabs)/discover" />;
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={["bottom"]}>

@@ -64,7 +64,7 @@ Deno.serve(async (req) => {
           // already-completed or cancelled rows.
           .in("status", ["active", "approved"]);
       } else {
-        await supabase.from("bookings").update({ status: "flagged_for_review", payment_status: "flagged_for_review" }).eq("id", booking.id);
+        await supabase.from("bookings").update({ payment_status: "review_required" }).eq("id", booking.id);
         await supabase.from("platform_events").insert({
           event_type: "payment.amount_mismatch",
           actor_role: "system",
@@ -78,7 +78,10 @@ Deno.serve(async (req) => {
     }
     case "payment_intent.payment_failed": {
       const pi = event.data.object as Stripe.PaymentIntent;
-      await supabase.from("bookings").update({ payment_status: "failed", status: "cancelled" }).eq("stripe_payment_intent_id", pi.id);
+      await supabase.from("bookings")
+        .update({ payment_status: "failed", status: "cancelled" })
+        .eq("stripe_payment_intent_id", pi.id)
+        .in("status", ["requested"]);
       break;
     }
     case "payment_intent.canceled": {

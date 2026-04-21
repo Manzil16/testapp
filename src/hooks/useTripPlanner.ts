@@ -14,7 +14,13 @@ interface TripPlannerSummary {
   projectedArrivalPercent: number;
   polyline: string;
   needsCharge: boolean;
-  recommendedCharger: { id: string; name: string; address: string } | null;
+  recommendedCharger: {
+    id: string;
+    name: string;
+    address: string;
+    latitude: number;
+    longitude: number;
+  } | null;
 }
 
 export function useTripPlanner(userId?: string, preferredReservePercent = 12) {
@@ -85,7 +91,7 @@ export function useTripPlanner(userId?: string, preferredReservePercent = 12) {
       const projectedArrival = Math.max(0, battery - energyUsed);
       const needsCharge = projectedArrival < preferredReservePercent;
 
-      let recommendedCharger = null;
+      let recommendedCharger: TripPlannerSummary["recommendedCharger"] = null;
       if (needsCharge) {
         const chargers = chargersQuery.data ?? [];
         // Decode polyline to route points for scoring (sample origin/destination as fallback)
@@ -95,7 +101,13 @@ export function useTripPlanner(userId?: string, preferredReservePercent = 12) {
         ];
         const best = recommendCharger(chargers, routePoints);
         if (best) {
-          recommendedCharger = { id: best.id, name: best.name, address: best.address };
+          recommendedCharger = {
+            id: best.id,
+            name: best.name,
+            address: best.address,
+            latitude: best.latitude,
+            longitude: best.longitude,
+          };
         }
       }
 

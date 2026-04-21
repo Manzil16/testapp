@@ -32,7 +32,6 @@ WebBrowser.maybeCompleteAuthSession();
 const ROLE_INFO = [
   { label: "Driver", ionicon: "car-sport" as const, desc: "Find & book chargers" },
   { label: "Host", ionicon: "home" as const, desc: "List your charger" },
-  { label: "Admin", ionicon: "shield-checkmark" as const, desc: "Manage the platform" },
 ] as const;
 
 export default function SignInScreen() {
@@ -150,7 +149,7 @@ export default function SignInScreen() {
           <Animated.View entering={FadeInDown.delay(200).duration(350)} style={styles.card}>
             <Text style={styles.cardTitle}>Sign In</Text>
             <Text style={styles.cardSubtitle}>
-              Access your Driver, Host, or Admin account
+              Access your Driver or Host account
             </Text>
 
             <TouchableOpacity
