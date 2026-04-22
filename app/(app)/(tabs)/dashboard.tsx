@@ -226,7 +226,13 @@ export default function DriverHomeScreen() {
                         <View style={styles.activePulse} />
                       )}
                       <View style={styles.activeContent}>
-                        <View style={styles.activeIconCircle}>
+                        <View
+                          style={[
+                            styles.activeIconCircle,
+                            activeBooking.status === "requested" &&
+                              styles.activeIconCirclePending,
+                          ]}
+                        >
                           <Ionicons
                             name={
                               activeBooking.status === "active"
@@ -236,7 +242,11 @@ export default function DriverHomeScreen() {
                                   : "time"
                             }
                             size={20}
-                            color={Colors.primary}
+                            color={
+                              activeBooking.status === "requested"
+                                ? Colors.warning
+                                : Colors.primary
+                            }
                           />
                         </View>
                         <View style={{ flex: 1 }}>
@@ -244,8 +254,8 @@ export default function DriverHomeScreen() {
                             <Text
                               style={
                                 activeBooking.status === "requested"
-                                  ? styles.activeLabel
-                                  : styles.pendingApprovalLabel
+                                  ? styles.pendingApprovalLabel
+                                  : styles.activeLabel
                               }
                             >
                               {activeBooking.status === "active"
@@ -739,6 +749,14 @@ const styles = StyleSheet.create({
     height: 44,
     borderRadius: 22,
     backgroundColor: Colors.primaryLight,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  activeIconCirclePending: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Colors.warningLight,
     alignItems: "center",
     justifyContent: "center",
   },
