@@ -1,12 +1,13 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
+  finalizeBookingManually,
   listBookingsByHost,
-  updateBookingStatus,
   updateArrivalSignal,
+  updateBookingStatus,
 } from "../features/bookings/booking.repository";
 import { listChargersByHost } from "../features/chargers/charger.repository";
-import { capturePayment, cancelPayment } from "../services/stripeService";
+import { capturePayment, cancelPayment, reconcileAndCapture } from "../services/stripeService";
 import type { Booking } from "../features/bookings/booking.types";
 import type { Charger } from "../features/chargers/charger.types";
 import type { UserProfile } from "../features/users/user.types";
@@ -79,6 +80,29 @@ export function useHostBookings(hostUserId?: string) {
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["bookings"] });
 
+  // Live sync: listen for any booking row change touching this host and refetch.
+  useEffect(() => {
+    if (!hostUserId) return;
+    const channel = supabase
+      .channel(`host-bookings:${hostUserId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "bookings",
+          filter: `host_id=eq.${hostUserId}`,
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ["bookings", "host", hostUserId] });
+        },
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [hostUserId, queryClient]);
+
   const approveMutation = useMutation({
     mutationFn: async ({ booking, note }: { booking: Booking; note?: string }) => {
       // Mark payment as authorized — only attempt if a PI exists (won't be set in Expo Go test mode).
@@ -117,9 +141,33 @@ export function useHostBookings(hostUserId?: string) {
   });
 
   const completeMutation = useMutation({
-    mutationFn: async ({ booking, note }: { booking: Booking; note?: string }) => {
+    mutationFn: async ({
+      booking,
+      actualKwh,
+    }: {
+      booking: Booking;
+      actualKwh: number;
+    }) => {
       await updateArrivalSignal(booking.id, "departed");
-      await updateBookingStatus(booking.id, "completed", note);
+
+      // Primary path: reconcile with Stripe (captures actual amount, updates DB).
+      if (booking.stripePaymentIntentId) {
+        try {
+          await reconcileAndCapture(booking.id, actualKwh);
+          return;
+        } catch (err) {
+          const message = err instanceof Error ? err.message : "";
+          const isTestModeGap =
+            message.includes("stripeNotConfigured") ||
+            message.includes("No such payment_intent") ||
+            message.includes("No payment intent");
+          if (!isTestModeGap) throw err;
+          // Fall through to manual finalize when there's no real PI (test mode).
+        }
+      }
+
+      // Fallback: write the reconciled amounts directly when Stripe isn't wired.
+      await finalizeBookingManually(booking.id, actualKwh);
     },
     onSuccess: invalidate,
   });
@@ -141,8 +189,8 @@ export function useHostBookings(hostUserId?: string) {
         approveMutation.mutateAsync({ booking, note }),
       declineBooking: (booking: Booking, note?: string) =>
         declineMutation.mutateAsync({ booking, note }),
-      markCompleted: (booking: Booking, note?: string) =>
-        completeMutation.mutateAsync({ booking, note }),
+      markCompleted: (booking: Booking, actualKwh: number) =>
+        completeMutation.mutateAsync({ booking, actualKwh }),
     },
   };
 }

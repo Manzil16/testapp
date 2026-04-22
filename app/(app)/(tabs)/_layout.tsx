@@ -168,7 +168,7 @@ export default function AppTabsLayout() {
         options={{
           ...sharedHeaderOptions,
           title: "Trips",
-          href: null,
+          href: isDriver ? undefined : null,
           tabBarIcon: icon("map"),
         }}
       />
@@ -179,15 +179,6 @@ export default function AppTabsLayout() {
           title: "Bookings",
           href: isDriver ? undefined : null,
           tabBarIcon: BookingsIcon,
-        }}
-      />
-      <Tabs.Screen
-        name="range-calculator"
-        options={{
-          ...sharedHeaderOptions,
-          title: "Range",
-          href: isDriver ? undefined : null,
-          tabBarIcon: icon("speedometer-outline"),
         }}
       />
 

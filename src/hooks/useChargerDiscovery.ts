@@ -94,7 +94,18 @@ export function useChargerDiscovery() {
   const filtered = useMemo(() => {
     return all.filter((c: Charger) => {
       if (debouncedSearch) {
-        const hay = `${c.name} ${c.address} ${c.suburb}`.toLowerCase();
+        const connectors = c.connectors.map((cn) => cn.type).join(" ");
+        const hay = [
+          c.name,
+          c.address,
+          c.suburb,
+          c.state,
+          connectors,
+          `${c.maxPowerKw}kw`,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
         if (!hay.includes(debouncedSearch.trim().toLowerCase())) return false;
       }
       if (connectorFilter !== "any" && !c.connectors.some((cn) => cn.type === connectorFilter))

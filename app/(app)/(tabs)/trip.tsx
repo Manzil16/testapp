@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useRouter } from "expo-router";
 import {
   ActivityIndicator,
@@ -10,9 +10,11 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import MapView, { Marker, Polyline, type Region } from "react-native-maps";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import {
   EmptyStateCard,
+  InfoPill,
   InputField,
   PrimaryCTA,
   ProgressStepper,
@@ -29,9 +31,32 @@ import {
 import { useAuth } from "@/src/features/auth/auth-context";
 import { useTripPlanner } from "@/src/hooks";
 
+function computeRouteRegion(points: { latitude: number; longitude: number }[]): Region {
+  if (points.length === 0) {
+    return { latitude: 0, longitude: 0, latitudeDelta: 0.1, longitudeDelta: 0.1 };
+  }
+  let minLat = points[0].latitude;
+  let maxLat = points[0].latitude;
+  let minLng = points[0].longitude;
+  let maxLng = points[0].longitude;
+  for (const p of points) {
+    if (p.latitude < minLat) minLat = p.latitude;
+    if (p.latitude > maxLat) maxLat = p.latitude;
+    if (p.longitude < minLng) minLng = p.longitude;
+    if (p.longitude > maxLng) maxLng = p.longitude;
+  }
+  return {
+    latitude: (minLat + maxLat) / 2,
+    longitude: (minLng + maxLng) / 2,
+    latitudeDelta: Math.max((maxLat - minLat) * 1.4, 0.02),
+    longitudeDelta: Math.max((maxLng - minLng) * 1.4, 0.02),
+  };
+}
+
 export default function TripPlannerScreen() {
   const router = useRouter();
   const { user, profile } = useAuth();
+  const mapRef = useRef<MapView>(null);
 
   const userId = useMemo(
     () => user?.id,
@@ -48,6 +73,24 @@ export default function TripPlannerScreen() {
     : !data.summary
     ? "vehicle"
     : "summary";
+
+  useEffect(() => {
+    if (!data.summary || !data.origin || !data.destination) return;
+    const coords = [
+      ...data.summary.routePoints,
+      { latitude: data.origin.latitude, longitude: data.origin.longitude },
+      { latitude: data.destination.latitude, longitude: data.destination.longitude },
+      ...data.summary.suggestedChargers.map((c) => ({ latitude: c.latitude, longitude: c.longitude })),
+    ];
+    if (coords.length < 2) return;
+    const id = setTimeout(() => {
+      mapRef.current?.fitToCoordinates(coords, {
+        edgePadding: { top: 60, right: 40, bottom: 60, left: 40 },
+        animated: true,
+      });
+    }, 120);
+    return () => clearTimeout(id);
+  }, [data.summary, data.origin, data.destination]);
 
   const openInMaps = async () => {
     if (!data.origin || !data.destination) {
@@ -89,6 +132,13 @@ export default function TripPlannerScreen() {
           />
           {data.origin ? <Text style={styles.selectionHint}>Selected: {data.origin.displayName}</Text> : null}
           {data.isOriginSearching ? <ActivityIndicator color={Colors.primary} style={styles.spinner} /> : null}
+          {!data.isOriginSearching &&
+          !data.origin &&
+          data.originQuery.trim().length >= 3 &&
+          data.originResults.length === 0 &&
+          data.originSearchError ? (
+            <Text style={styles.errorHint}>Address search unavailable — check your connection and try again.</Text>
+          ) : null}
           {data.originResults.length > 0 ? (
             <FlatList
               data={data.originResults}
@@ -97,9 +147,9 @@ export default function TripPlannerScreen() {
               renderItem={({ item }) => (
                 <TouchableOpacity style={styles.resultRow} onPress={() => actions.selectOrigin(item)}>
                   <Text style={styles.resultPrimary}>{item.primaryText || item.displayName}</Text>
-                  {item.secondaryText ? (
-                    <Text style={styles.resultSecondary}>{item.secondaryText}</Text>
-                  ) : null}
+                  <Text style={styles.resultSecondary} numberOfLines={2}>
+                    {item.secondaryText || item.displayName}
+                  </Text>
                 </TouchableOpacity>
               )}
             />
@@ -115,6 +165,13 @@ export default function TripPlannerScreen() {
             <Text style={styles.selectionHint}>Selected: {data.destination.displayName}</Text>
           ) : null}
           {data.isDestinationSearching ? <ActivityIndicator color={Colors.primary} style={styles.spinner} /> : null}
+          {!data.isDestinationSearching &&
+          !data.destination &&
+          data.destinationQuery.trim().length >= 3 &&
+          data.destinationResults.length === 0 &&
+          data.destinationSearchError ? (
+            <Text style={styles.errorHint}>Address search unavailable — check your connection and try again.</Text>
+          ) : null}
           {data.destinationResults.length > 0 ? (
             <FlatList
               data={data.destinationResults}
@@ -123,9 +180,9 @@ export default function TripPlannerScreen() {
               renderItem={({ item }) => (
                 <TouchableOpacity style={styles.resultRow} onPress={() => actions.selectDestination(item)}>
                   <Text style={styles.resultPrimary}>{item.primaryText || item.displayName}</Text>
-                  {item.secondaryText ? (
-                    <Text style={styles.resultSecondary}>{item.secondaryText}</Text>
-                  ) : null}
+                  <Text style={styles.resultSecondary} numberOfLines={2}>
+                    {item.secondaryText || item.displayName}
+                  </Text>
                 </TouchableOpacity>
               )}
             />
@@ -191,35 +248,113 @@ export default function TripPlannerScreen() {
               </View>
             </View>
 
+            {/* Embedded map with polyline + charger pins */}
+            {data.summary.routePoints.length > 1 && data.origin && data.destination ? (
+              <View style={styles.mapWrap}>
+                <MapView
+                  ref={mapRef}
+                  style={styles.tripMap}
+                  initialRegion={computeRouteRegion(data.summary.routePoints)}
+                  pitchEnabled={false}
+                  rotateEnabled={false}
+                >
+                  <Polyline
+                    coordinates={data.summary.routePoints}
+                    strokeColor={Colors.primary}
+                    strokeWidth={4}
+                  />
+                  <Marker
+                    coordinate={{ latitude: data.origin.latitude, longitude: data.origin.longitude }}
+                    anchor={{ x: 0.5, y: 0.5 }}
+                  >
+                    <View style={[styles.endpointPin, { backgroundColor: Colors.success }]}>
+                      <Text style={styles.endpointText}>A</Text>
+                    </View>
+                  </Marker>
+                  <Marker
+                    coordinate={{ latitude: data.destination.latitude, longitude: data.destination.longitude }}
+                    anchor={{ x: 0.5, y: 0.5 }}
+                  >
+                    <View style={[styles.endpointPin, { backgroundColor: Colors.error }]}>
+                      <Text style={styles.endpointText}>B</Text>
+                    </View>
+                  </Marker>
+                  {data.summary.suggestedChargers.map((c) => (
+                    <Marker
+                      key={c.id}
+                      coordinate={{ latitude: c.latitude, longitude: c.longitude }}
+                      anchor={{ x: 0.5, y: 0.5 }}
+                      stopPropagation
+                      tracksViewChanges={false}
+                      onPress={() => router.push(`/(app)/chargers/${c.id}` as any)}
+                    >
+                      <View style={styles.chargerPin}>
+                        <Text style={styles.chargerPinText}>
+                          ${c.pricingPerKwh.toFixed(2)}
+                        </Text>
+                      </View>
+                    </Marker>
+                  ))}
+                </MapView>
+              </View>
+            ) : null}
+
             {data.summary.needsCharge ? (
               <>
                 <SectionTitle
-                  title="Suggested Chargers"
-                  subtitle="Route needs an intermediate charging stop"
-                />
-                <FlatList
-                  data={data.summary.recommendedCharger ? [data.summary.recommendedCharger] : []}
-                  keyExtractor={(item) => item.id}
-                  scrollEnabled={false}
-                  renderItem={({ item }) => (
-                    <TouchableOpacity
-                      style={styles.recommendCard}
-                      onPress={() => router.push(`/(app)/chargers/${item.id}` as any)}
-                    >
-                      <Text style={styles.recommendName}>{item.name}</Text>
-                      <Text style={styles.recommendMeta}>
-                        {item.address}
-                      </Text>
-                    </TouchableOpacity>
-                  )}
-                  ListEmptyComponent={
-                    <EmptyStateCard
-                      icon="🔋"
-                      title="No route suggestions"
-                      message="Try broadening discovery filters or adjusting battery input."
-                    />
+                  title="Chargers along your route"
+                  subtitle={
+                    data.primaryVehicle?.connectorType
+                      ? `Within 5 km · compatible with ${data.primaryVehicle.connectorType}`
+                      : "Within 5 km of your route"
                   }
+                  topSpacing={Spacing.md}
                 />
+                {data.summary.suggestedChargers.length === 0 ? (
+                  <EmptyStateCard
+                    icon="🔋"
+                    title="No compatible chargers along this route"
+                    message={
+                      data.primaryVehicle?.connectorType
+                        ? `No ${data.primaryVehicle.connectorType} chargers within 5 km of your route. Try a different route or check back later.`
+                        : "No chargers within 5 km of this route. Try a different route."
+                    }
+                  />
+                ) : (
+                  <FlatList
+                    data={data.summary.suggestedChargers}
+                    keyExtractor={(item) => item.id}
+                    scrollEnabled={false}
+                    renderItem={({ item }) => (
+                      <TouchableOpacity
+                        style={styles.recommendCard}
+                        onPress={() => router.push(`/(app)/chargers/${item.id}` as any)}
+                      >
+                        <View style={styles.recommendHeaderRow}>
+                          <Text style={styles.recommendName} numberOfLines={1}>
+                            {item.name}
+                          </Text>
+                          <Text style={styles.recommendPrice}>
+                            ${item.pricingPerKwh.toFixed(2)}/kWh
+                          </Text>
+                        </View>
+                        <Text style={styles.recommendMeta} numberOfLines={2}>
+                          {item.address}
+                        </Text>
+                        <View style={styles.recommendPillRow}>
+                          <InfoPill
+                            label={`${item.detourKm.toFixed(1)} km off route`}
+                            variant="primary"
+                          />
+                          <InfoPill label={`${item.maxPowerKw}kW`} variant="default" />
+                          {item.connectorTypes.slice(0, 2).map((c) => (
+                            <InfoPill key={c} label={c} variant="default" />
+                          ))}
+                        </View>
+                      </TouchableOpacity>
+                    )}
+                  />
+                )}
               </>
             ) : (
               <EmptyStateCard
@@ -229,7 +364,7 @@ export default function TripPlannerScreen() {
               />
             )}
 
-            <PrimaryCTA label="Open in Maps" onPress={openInMaps} style={styles.mapsBtn} />
+            <PrimaryCTA label="Open in Google Maps" onPress={openInMaps} style={styles.mapsBtn} />
           </Animated.View>
         ) : isLoading ? (
           <Animated.View entering={FadeInDown.duration(240)} style={styles.card}>
@@ -302,6 +437,11 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     marginTop: Spacing.xs,
   },
+  errorHint: {
+    ...Typography.caption,
+    color: Colors.error,
+    marginTop: Spacing.xs,
+  },
   metricRow: {
     flexDirection: "row",
     gap: Spacing.sm,
@@ -357,5 +497,61 @@ const styles = StyleSheet.create({
   tripHistoryBattery: {
     ...Typography.cardTitle,
     marginLeft: Spacing.sm,
+  },
+  mapWrap: {
+    marginTop: Spacing.md,
+    borderRadius: Radius.md,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  tripMap: {
+    width: "100%",
+    height: 240,
+  },
+  endpointPin: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: Colors.surface,
+    ...Shadows.card,
+  },
+  endpointText: {
+    color: Colors.surface,
+    fontWeight: "700",
+    fontSize: 13,
+  },
+  chargerPin: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.primary,
+    borderWidth: 2,
+    borderColor: Colors.surface,
+    ...Shadows.card,
+  },
+  chargerPinText: {
+    color: Colors.surface,
+    fontWeight: "700",
+    fontSize: 11,
+  },
+  recommendHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  recommendPrice: {
+    ...Typography.cardTitle,
+    color: Colors.primary,
+    marginLeft: Spacing.sm,
+  },
+  recommendPillRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: Spacing.xs,
+    marginTop: Spacing.sm,
   },
 });

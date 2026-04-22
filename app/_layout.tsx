@@ -62,9 +62,9 @@ const tabByRole: Record<AppRole, string> = {
 };
 
 const allowedTabsByRole: Record<AppRole, Set<string>> = {
-  driver: new Set(["dashboard", "discover", "bookings", "range-calculator", "profile", "settings"]),
+  driver: new Set(["dashboard", "discover", "trip", "bookings", "profile", "settings"]),
   host: new Set(["host-home", "host-chargers", "host-bookings", "profile", "settings"]),
-  admin: new Set(["admin-overview", "admin-verify", "admin-trust", "admin-settings"]),
+  admin: new Set(["admin-overview", "admin-verify", "admin-trust", "admin-settings", "profile"]),
 };
 
 // ─── Error Boundary ───────────────────────────────────────────────────────────

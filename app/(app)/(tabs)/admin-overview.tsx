@@ -12,12 +12,14 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import Animated from "react-native-reanimated";
 import {
+  Avatar,
   EmptyStateCard,
   FilterChipRow,
   InfoPill,
   PrimaryCTA,
   SearchBar,
   SectionTitle,
+  SegmentedControl,
   StatCard,
   StatCardSkeleton,
   ScreenContainer,
@@ -27,11 +29,13 @@ import {
   Spacing,
   Shadows,
 } from "@/src/components";
-import { useEntranceAnimation } from "@/src/hooks";
+import { useEntranceAnimation, useAdminChargers, useAdminBookings } from "@/src/hooks";
 import { useAuth } from "@/src/features/auth/auth-context";
 import { useAdminEventLog } from "@/src/hooks/useAdminEventLog";
 import { useDebounce } from "@/src/hooks/useDebounce";
 import type { PlatformEvent } from "@/src/features/admin/admin.repository";
+import type { ChargerStatus } from "@/src/features/chargers/charger.types";
+import type { BookingStatus } from "@/src/features/bookings/booking.types";
 
 const EVENT_TYPE_COLORS: Record<string, string> = {
   booking: Colors.accent,
@@ -66,6 +70,23 @@ const DATE_RANGES = [
   { id: "today", label: "Today" },
   { id: "7d", label: "7 days" },
   { id: "30d", label: "30 days" },
+];
+
+const CHARGER_STATUS_CHIPS = [
+  { id: "approved", label: "Approved" },
+  { id: "pending", label: "Pending" },
+  { id: "rejected", label: "Rejected" },
+  { id: "all", label: "All" },
+];
+
+const BOOKING_STATUS_CHIPS = [
+  { id: "all", label: "All" },
+  { id: "requested", label: "Requested" },
+  { id: "approved", label: "Approved" },
+  { id: "active", label: "Active" },
+  { id: "completed", label: "Completed" },
+  { id: "cancelled", label: "Cancelled" },
+  { id: "declined", label: "Declined" },
 ];
 
 function getDateFrom(rangeId: string): string | undefined {
@@ -121,6 +142,16 @@ function getEventColor(eventType: string): string {
 export default function AdminOverviewScreen() {
   const { profile } = useAuth();
   const entranceStyle = useEntranceAnimation();
+
+  const [view, setView] = useState<"activity" | "chargers" | "bookings">("activity");
+  const [searchText, setSearchText] = useState("");
+  const [activeQuickFilter, setActiveQuickFilter] = useState("all");
+  const [activeRoleFilter, setActiveRoleFilter] = useState("all");
+  const [activeDateFilter, setActiveDateFilter] = useState("all");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [chargerStatusFilter, setChargerStatusFilter] = useState<ChargerStatus | "all">("approved");
+  const [bookingStatusFilter, setBookingStatusFilter] = useState<BookingStatus | "all">("all");
+
   const {
     events,
     total,
@@ -133,11 +164,8 @@ export default function AdminOverviewScreen() {
     refetch,
   } = useAdminEventLog();
 
-  const [searchText, setSearchText] = useState("");
-  const [activeQuickFilter, setActiveQuickFilter] = useState("all");
-  const [activeRoleFilter, setActiveRoleFilter] = useState("all");
-  const [activeDateFilter, setActiveDateFilter] = useState("all");
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const chargersInventory = useAdminChargers(chargerStatusFilter);
+  const bookingsInventory = useAdminBookings(bookingStatusFilter);
 
   const debouncedSearch = useDebounce(searchText, 400);
 
@@ -176,6 +204,122 @@ export default function AdminOverviewScreen() {
       setFilter({ dateFrom: getDateFrom(id) });
     },
     [setFilter]
+  );
+
+  // Chargers view — client-side search over the current status-filtered set.
+  const chargersFiltered = useMemo(() => {
+    const q = debouncedSearch.trim().toLowerCase();
+    if (!q) return chargersInventory.chargers;
+    return chargersInventory.chargers.filter((c) => {
+      const host = chargersInventory.hostsById[c.hostUserId]?.displayName ?? "";
+      const hay = `${c.name} ${c.address} ${c.suburb} ${c.state} ${host}`.toLowerCase();
+      return hay.includes(q);
+    });
+  }, [chargersInventory.chargers, chargersInventory.hostsById, debouncedSearch]);
+
+  // Bookings view — client-side search across charger, driver, host names.
+  const bookingsFiltered = useMemo(() => {
+    const q = debouncedSearch.trim().toLowerCase();
+    const list = bookingsInventory.bookings;
+    if (!q) return list;
+    return list.filter((b) => {
+      const chargerName = bookingsInventory.chargersById[b.chargerId]?.name ?? "";
+      const driverName = bookingsInventory.profilesById[b.driverUserId]?.displayName ?? "";
+      const hostName = bookingsInventory.profilesById[b.hostUserId]?.displayName ?? "";
+      const hay = `${chargerName} ${driverName} ${hostName} ${b.id}`.toLowerCase();
+      return hay.includes(q);
+    });
+  }, [
+    bookingsInventory.bookings,
+    bookingsInventory.chargersById,
+    bookingsInventory.profilesById,
+    debouncedSearch,
+  ]);
+
+  const renderCharger = useCallback(
+    ({ item }: { item: (typeof chargersFiltered)[number] }) => {
+      const host = chargersInventory.hostsById[item.hostUserId];
+      const statusColor =
+        item.status === "approved"
+          ? Colors.success
+          : item.status === "rejected"
+          ? Colors.error
+          : Colors.warning;
+      return (
+        <View style={styles.inventoryRow}>
+          <View style={[styles.eventDot, { backgroundColor: statusColor }]} />
+          <View style={styles.eventContent}>
+            <View style={styles.eventTopRow}>
+              <Text style={styles.eventType} numberOfLines={1}>
+                {item.name}
+              </Text>
+              <InfoPill
+                label={item.status}
+                variant={
+                  item.status === "approved"
+                    ? "success"
+                    : item.status === "rejected"
+                    ? "error"
+                    : "warning"
+                }
+              />
+            </View>
+            <Text style={styles.eventActor} numberOfLines={1}>
+              {host?.displayName ?? `Host ${item.hostUserId.slice(0, 6)}`} ·{" "}
+              {item.suburb}, {item.state}
+            </Text>
+            <Text style={styles.inventoryMeta}>
+              ${item.pricingPerKwh.toFixed(2)}/kWh · {item.maxPowerKw}kW · score {item.verificationScore}
+            </Text>
+          </View>
+        </View>
+      );
+    },
+    [chargersInventory.hostsById],
+  );
+
+  const renderBooking = useCallback(
+    ({ item }: { item: (typeof bookingsFiltered)[number] }) => {
+      const chargerInfo = bookingsInventory.chargersById[item.chargerId];
+      const driver = bookingsInventory.profilesById[item.driverUserId];
+      const host = bookingsInventory.profilesById[item.hostUserId];
+      const amount = item.actualAmount ?? item.totalAmount ?? 0;
+      const when = new Date(item.startTimeIso).toLocaleString(undefined, {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      const statusVariant =
+        item.status === "completed"
+          ? "success"
+          : item.status === "active" || item.status === "approved"
+          ? "primary"
+          : item.status === "cancelled" || item.status === "declined" || item.status === "missed"
+          ? "error"
+          : "warning";
+      return (
+        <View style={styles.inventoryRow}>
+          <Avatar uri={driver?.avatarUrl} name={driver?.displayName ?? "Driver"} size="sm" />
+          <View style={styles.eventContent}>
+            <View style={styles.eventTopRow}>
+              <Text style={styles.eventType} numberOfLines={1}>
+                {chargerInfo?.name ?? "Charger"}
+              </Text>
+              <InfoPill label={item.status} variant={statusVariant as any} />
+            </View>
+            <Text style={styles.eventActor} numberOfLines={1}>
+              {driver?.displayName ?? "Driver"} → {host?.displayName ?? "Host"}
+            </Text>
+            <Text style={styles.inventoryMeta}>
+              {when} · ${amount.toFixed(2)} ·{" "}
+              {(item.actualKWh ?? item.estimatedKWh).toFixed(1)} kWh
+            </Text>
+          </View>
+        </View>
+      );
+    },
+    [bookingsInventory.chargersById, bookingsInventory.profilesById],
   );
 
   const renderEvent = useCallback(
@@ -281,80 +425,160 @@ export default function AdminOverviewScreen() {
             )}
           </ScrollView>
 
-          {/* Search */}
+          {/* View switcher */}
+          <SegmentedControl
+            segments={[
+              { id: "activity", label: "Activity" },
+              { id: "chargers", label: "Chargers" },
+              { id: "bookings", label: "Bookings" },
+            ]}
+            activeId={view}
+            onChange={(id) => {
+              setView(id as typeof view);
+              setSearchText("");
+            }}
+            style={styles.viewSwitcher}
+          />
+
+          {/* Shared search bar — placeholder adjusts per view */}
           <SearchBar
             value={searchText}
             onChangeText={handleSearch}
-            placeholder="Search by name, charger, booking ID, email..."
-          />
-
-          {/* Filter Rows */}
-          <View style={styles.filterSection}>
-            <FilterChipRow
-              chips={DATE_RANGES}
-              activeId={activeDateFilter}
-              onSelect={handleDateFilter}
-            />
-            <FilterChipRow
-              chips={ACTOR_ROLES}
-              activeId={activeRoleFilter}
-              onSelect={handleRoleFilter}
-            />
-          </View>
-
-          {/* Quick filter chips */}
-          <FilterChipRow
-            chips={QUICK_FILTERS}
-            activeId={activeQuickFilter}
-            onSelect={handleQuickFilter}
-          />
-
-          {/* Event count */}
-          <SectionTitle
-            title={`${total} events`}
-            subtitle={isFetching ? "Updating..." : undefined}
-            topSpacing={Spacing.sm}
-          />
-
-          {/* Event List */}
-          <FlatList
-            data={events}
-            keyExtractor={(item) => item.id}
-            renderItem={renderEvent}
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.listContent}
-            ListEmptyComponent={
-              isLoading ? null : (
-                <EmptyStateCard
-                  icon="📊"
-                  title="No events found"
-                  message="Try adjusting your search or filters."
-                  actionLabel="Reset filters"
-                  onAction={() => {
-                    setSearchText("");
-                    setActiveQuickFilter("all");
-                    setActiveRoleFilter("all");
-                    setActiveDateFilter("all");
-                    setFilter({
-                      search: undefined,
-                      eventTypes: undefined,
-                      actorRole: undefined,
-                      dateFrom: undefined,
-                    });
-                  }}
-                />
-              )
-            }
-            ListFooterComponent={
-              events.length < total ? (
-                <PrimaryCTA
-                  label="Load more"
-                  onPress={loadMore}
-                  style={styles.loadMoreBtn}
-                />
-              ) : null
+            placeholder={
+              view === "activity"
+                ? "Search events — name, charger, booking ID, email..."
+                : view === "chargers"
+                ? "Search charger, host, suburb..."
+                : "Search booking — charger, driver, host..."
             }
           />
+
+          {view === "activity" && (
+            <>
+              <View style={styles.filterSection}>
+                <FilterChipRow
+                  chips={DATE_RANGES}
+                  activeId={activeDateFilter}
+                  onSelect={handleDateFilter}
+                />
+                <FilterChipRow
+                  chips={ACTOR_ROLES}
+                  activeId={activeRoleFilter}
+                  onSelect={handleRoleFilter}
+                />
+              </View>
+              <FilterChipRow
+                chips={QUICK_FILTERS}
+                activeId={activeQuickFilter}
+                onSelect={handleQuickFilter}
+              />
+              <SectionTitle
+                title={`${total} events`}
+                subtitle={isFetching ? "Updating..." : undefined}
+                topSpacing={Spacing.sm}
+              />
+              <FlatList
+                data={events}
+                keyExtractor={(item) => item.id}
+                renderItem={renderEvent}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.listContent}
+                ListEmptyComponent={
+                  isLoading ? null : (
+                    <EmptyStateCard
+                      icon="📊"
+                      title="No events found"
+                      message="Try adjusting your search or filters."
+                      actionLabel="Reset filters"
+                      onAction={() => {
+                        setSearchText("");
+                        setActiveQuickFilter("all");
+                        setActiveRoleFilter("all");
+                        setActiveDateFilter("all");
+                        setFilter({
+                          search: undefined,
+                          eventTypes: undefined,
+                          actorRole: undefined,
+                          dateFrom: undefined,
+                        });
+                      }}
+                    />
+                  )
+                }
+                ListFooterComponent={
+                  events.length < total ? (
+                    <PrimaryCTA
+                      label="Load more"
+                      onPress={loadMore}
+                      style={styles.loadMoreBtn}
+                    />
+                  ) : null
+                }
+              />
+            </>
+          )}
+
+          {view === "chargers" && (
+            <>
+              <FilterChipRow
+                chips={CHARGER_STATUS_CHIPS}
+                activeId={chargerStatusFilter}
+                onSelect={(id) => setChargerStatusFilter(id as ChargerStatus | "all")}
+              />
+              <SectionTitle
+                title={`${chargersFiltered.length} chargers`}
+                subtitle={chargersInventory.isLoading ? "Loading..." : undefined}
+                topSpacing={Spacing.sm}
+              />
+              <FlatList
+                data={chargersFiltered}
+                keyExtractor={(item) => item.id}
+                renderItem={renderCharger}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.listContent}
+                ListEmptyComponent={
+                  chargersInventory.isLoading ? null : (
+                    <EmptyStateCard
+                      icon="⚡"
+                      title="No chargers found"
+                      message="Try switching status or clearing the search."
+                    />
+                  )
+                }
+              />
+            </>
+          )}
+
+          {view === "bookings" && (
+            <>
+              <FilterChipRow
+                chips={BOOKING_STATUS_CHIPS}
+                activeId={bookingStatusFilter}
+                onSelect={(id) => setBookingStatusFilter(id as BookingStatus | "all")}
+              />
+              <SectionTitle
+                title={`${bookingsFiltered.length} bookings`}
+                subtitle={bookingsInventory.isLoading ? "Loading..." : undefined}
+                topSpacing={Spacing.sm}
+              />
+              <FlatList
+                data={bookingsFiltered}
+                keyExtractor={(item) => item.id}
+                renderItem={renderBooking}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.listContent}
+                ListEmptyComponent={
+                  bookingsInventory.isLoading ? null : (
+                    <EmptyStateCard
+                      icon="📅"
+                      title="No bookings found"
+                      message="Try switching status or clearing the search."
+                    />
+                  )
+                }
+              />
+            </>
+          )}
         </ScreenContainer>
       </Animated.View>
     </SafeAreaView>
@@ -376,9 +600,25 @@ const styles = StyleSheet.create({
   statCard: {
     width: 150,
   },
+  viewSwitcher: {
+    marginBottom: Spacing.md,
+  },
   filterSection: {
     gap: Spacing.xs,
     marginVertical: Spacing.sm,
+  },
+  inventoryRow: {
+    flexDirection: "row",
+    paddingVertical: Spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.borderSubtle,
+    gap: Spacing.md,
+    alignItems: "center",
+  },
+  inventoryMeta: {
+    ...Typography.caption,
+    color: Colors.textMuted,
+    marginTop: 2,
   },
   listContent: {
     paddingBottom: Spacing.xxxl,

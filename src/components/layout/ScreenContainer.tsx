@@ -64,13 +64,16 @@ export function ScreenContainer({
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: bg }]} edges={["top"]}>
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
-      >
-        {inner}
-      </KeyboardAvoidingView>
+      {scrollable ? (
+        inner
+      ) : (
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+        >
+          {inner}
+        </KeyboardAvoidingView>
+      )}
     </SafeAreaView>
   );
 }

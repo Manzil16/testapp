@@ -284,7 +284,7 @@ export default function HostBookingsTabScreen() {
               Alert.alert("Invalid kWh", "Please enter a valid kWh value greater than 0.");
               return;
             }
-            actions.markCompleted(completeBooking, String(kwh));
+            actions.markCompleted(completeBooking, kwh);
             setCompleteBooking(null);
             setActualKwhInput("");
           }}

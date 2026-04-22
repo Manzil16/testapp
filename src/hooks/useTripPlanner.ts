@@ -1,26 +1,67 @@
 import { useCallback, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore — @mapbox/polyline ships as CJS without types
+import polyline from "@mapbox/polyline";
 import { listChargers } from "../features/chargers/charger.repository";
 import { createTrip, listTripsByUser } from "../features/trips/trip.repository";
 import { listVehiclesByUser } from "../features/vehicles/vehicle.repository";
 import { searchAddress, type GeoResult } from "../services/geocodingService";
 import { getRoute } from "../services/routingService";
 import { useDebounce } from "./useDebounce";
-import { recommendCharger } from "../utils/chargerRecommender";
+import { rankChargersAlongRoute, type RouteCandidate } from "../utils/chargerRecommender";
+import type { Charger } from "../features/chargers/charger.types";
+
+type RoutePoint = { latitude: number; longitude: number };
+
+export interface RouteChargerSuggestion {
+  id: string;
+  name: string;
+  address: string;
+  latitude: number;
+  longitude: number;
+  pricingPerKwh: number;
+  maxPowerKw: number;
+  detourKm: number;
+  score: number;
+  connectorTypes: string[];
+}
 
 interface TripPlannerSummary {
   distanceKm: number;
   durationMinutes: number;
   projectedArrivalPercent: number;
   polyline: string;
+  routePoints: RoutePoint[];
   needsCharge: boolean;
-  recommendedCharger: {
-    id: string;
-    name: string;
-    address: string;
-    latitude: number;
-    longitude: number;
-  } | null;
+  suggestedChargers: RouteChargerSuggestion[];
+  /** First suggestion, kept for back-compat with older screens. */
+  recommendedCharger: RouteChargerSuggestion | null;
+}
+
+function decodeRoutePolyline(encoded: string): RoutePoint[] {
+  if (!encoded) return [];
+  try {
+    const pairs = polyline.decode(encoded) as [number, number][];
+    return pairs.map(([latitude, longitude]) => ({ latitude, longitude }));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Sample a polyline down to ~N points to keep corridor distance checks fast.
+ */
+function samplePolyline(points: RoutePoint[], targetSamples = 80): RoutePoint[] {
+  if (points.length <= targetSamples) return points;
+  const stride = Math.ceil(points.length / targetSamples);
+  const sampled: RoutePoint[] = [];
+  for (let i = 0; i < points.length; i += stride) sampled.push(points[i]);
+  // Always include the final point so the corridor reaches the destination.
+  if (sampled[sampled.length - 1] !== points[points.length - 1]) {
+    sampled.push(points[points.length - 1]);
+  }
+  return sampled;
 }
 
 export function useTripPlanner(userId?: string, preferredReservePercent = 12) {
@@ -60,12 +101,14 @@ export function useTripPlanner(userId?: string, preferredReservePercent = 12) {
     queryKey: ["geocode", debouncedOrigin],
     queryFn: () => searchAddress(debouncedOrigin),
     enabled: debouncedOrigin.length >= 3 && !origin,
+    retry: 1,
   });
 
   const destSearchQuery = useQuery({
     queryKey: ["geocode", debouncedDest],
     queryFn: () => searchAddress(debouncedDest),
     enabled: debouncedDest.length >= 3 && !destination,
+    retry: 1,
   });
 
   const vehicles = vehiclesQuery.data ?? [];
@@ -91,33 +134,49 @@ export function useTripPlanner(userId?: string, preferredReservePercent = 12) {
       const projectedArrival = Math.max(0, battery - energyUsed);
       const needsCharge = projectedArrival < preferredReservePercent;
 
-      let recommendedCharger: TripPlannerSummary["recommendedCharger"] = null;
-      if (needsCharge) {
-        const chargers = chargersQuery.data ?? [];
-        // Decode polyline to route points for scoring (sample origin/destination as fallback)
-        const routePoints = [
-          { latitude: origin.latitude, longitude: origin.longitude },
-          { latitude: destination.latitude, longitude: destination.longitude },
-        ];
-        const best = recommendCharger(chargers, routePoints);
-        if (best) {
-          recommendedCharger = {
-            id: best.id,
-            name: best.name,
-            address: best.address,
-            latitude: best.latitude,
-            longitude: best.longitude,
-          };
-        }
-      }
+      // Decode the actual route geometry so the corridor filter follows the road,
+      // not a straight line between origin and destination.
+      const decoded = decodeRoutePolyline(route.polyline);
+      const routePoints: RoutePoint[] = decoded.length >= 2
+        ? samplePolyline(decoded)
+        : [
+            { latitude: origin.latitude, longitude: origin.longitude },
+            { latitude: destination.latitude, longitude: destination.longitude },
+          ];
+
+      // Rank every charger within 5 km of the route, filtered by vehicle connector.
+      const allChargers: Charger[] = chargersQuery.data ?? [];
+      const candidates: RouteCandidate<Charger>[] = rankChargersAlongRoute(
+        allChargers,
+        routePoints,
+        {
+          maxDetourKm: 5,
+          connectorType: primaryVehicle?.connectorType,
+        },
+      );
+
+      const suggestedChargers: RouteChargerSuggestion[] = candidates.map((c) => ({
+        id: c.charger.id,
+        name: c.charger.name,
+        address: c.charger.address,
+        latitude: c.charger.latitude,
+        longitude: c.charger.longitude,
+        pricingPerKwh: c.charger.pricingPerKwh,
+        maxPowerKw: c.charger.maxPowerKw,
+        detourKm: c.detourKm,
+        score: c.score,
+        connectorTypes: c.charger.connectors?.map((cn) => cn.type) ?? [],
+      }));
 
       const result: TripPlannerSummary = {
         distanceKm: route.distanceKm,
         durationMinutes: route.durationMinutes,
         projectedArrivalPercent: Math.round(projectedArrival * 10) / 10,
         polyline: route.polyline,
+        routePoints,
         needsCharge,
-        recommendedCharger,
+        suggestedChargers,
+        recommendedCharger: suggestedChargers[0] ?? null,
       };
 
       setSummary(result);
@@ -132,7 +191,7 @@ export function useTripPlanner(userId?: string, preferredReservePercent = 12) {
         durationMinutes: route.durationMinutes,
         routePolyline: route.polyline,
         projectedArrivalPercent: result.projectedArrivalPercent,
-        recommendedChargerId: recommendedCharger?.id,
+        recommendedChargerId: result.recommendedCharger?.id,
       });
 
       queryClient.invalidateQueries({ queryKey: ["trips", userId] });
@@ -144,7 +203,7 @@ export function useTripPlanner(userId?: string, preferredReservePercent = 12) {
     } finally {
       setIsPlanning(false);
     }
-  }, [origin, destination, userId, batteryPercent, vehicleRangeKm, chargersQuery.data, preferredReservePercent, queryClient]);
+  }, [origin, destination, userId, batteryPercent, vehicleRangeKm, chargersQuery.data, preferredReservePercent, primaryVehicle?.connectorType, queryClient]);
 
   return {
     data: {
@@ -162,6 +221,12 @@ export function useTripPlanner(userId?: string, preferredReservePercent = 12) {
       summary,
       isOriginSearching: originSearchQuery.isLoading,
       isDestinationSearching: destSearchQuery.isLoading,
+      originSearchError: originSearchQuery.error
+        ? (originSearchQuery.error as Error).message
+        : null,
+      destinationSearchError: destSearchQuery.error
+        ? (destSearchQuery.error as Error).message
+        : null,
     },
     isLoading: vehiclesQuery.isLoading,
     isPlanning,

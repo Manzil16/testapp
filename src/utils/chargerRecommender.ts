@@ -14,6 +14,7 @@ interface ScoredCharger {
   pricingPerKwh: number;
   averageRating?: number;
   status: string;
+  connectors?: Array<{ type: string }>;
 }
 
 interface RoutePoint {
@@ -107,4 +108,49 @@ export function recommendCharger(
   }
 
   return bestCharger;
+}
+
+export interface RouteCandidate<T extends ScoredCharger = ScoredCharger> {
+  charger: T;
+  detourKm: number;
+  score: number;
+}
+
+export interface RankOptions {
+  /** Filter out chargers further than this from any route point. Default MAX_DETOUR_KM (5km). */
+  maxDetourKm?: number;
+  /** If set, keep only chargers with at least one matching connector. */
+  connectorType?: string;
+}
+
+/**
+ * Rank every charger within the route corridor. Returns sorted list (best first).
+ * Unlike recommendCharger(), this returns ALL compatible candidates, not just the top one.
+ */
+export function rankChargersAlongRoute<T extends ScoredCharger>(
+  chargers: T[],
+  routePoints: RoutePoint[],
+  options: RankOptions = {},
+): RouteCandidate<T>[] {
+  const maxDetour = options.maxDetourKm ?? MAX_DETOUR_KM;
+  const required = options.connectorType?.trim();
+
+  const results: RouteCandidate<T>[] = [];
+  for (const charger of chargers) {
+    if (required && charger.connectors && charger.connectors.length > 0) {
+      const match = charger.connectors.some((c) => c.type === required);
+      if (!match) continue;
+    }
+
+    const detourKm = getDetourDistanceKm(charger, routePoints);
+    if (detourKm > maxDetour) continue;
+
+    const score = scoreCharger(charger, routePoints);
+    if (score < 0) continue;
+
+    results.push({ charger, detourKm, score });
+  }
+
+  results.sort((a, b) => b.score - a.score);
+  return results;
 }

@@ -1,5 +1,6 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import {
+  Pressable,
   StyleSheet,
   TextInput,
   TouchableOpacity,
@@ -33,12 +34,17 @@ export function SearchBar({
   onSubmitEditing,
 }: SearchBarProps) {
   const [focused, setFocused] = useState(false);
+  const inputRef = useRef<TextInput>(null);
 
   return (
-    <View style={[styles.container, focused && styles.containerFocused, style]}>
+    <Pressable
+      style={[styles.container, focused && styles.containerFocused, style]}
+      onPress={() => inputRef.current?.focus()}
+    >
       <Ionicons name="search-outline" size={18} color={Colors.textMuted} style={styles.searchIcon} />
 
       <TextInput
+        ref={inputRef}
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
@@ -72,7 +78,7 @@ export function SearchBar({
           ) : null}
         </TouchableOpacity>
       )}
-    </View>
+    </Pressable>
   );
 }
 

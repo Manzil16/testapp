@@ -2,6 +2,8 @@ import { supabase } from "../../lib/supabase";
 import { AppConfig } from "../../constants/app";
 import { reconcileAndCapture, verifyPaymentMethodSetup } from "../../services/stripeService";
 import { getVerificationGate } from "../verification/verification-gates.repository";
+import type { ChargerAvailabilityWindow } from "../chargers/charger.types";
+import { validateBookingAvailability } from "./availability";
 import type { Booking, BookingStatus, CreateBookingInput } from "./booking.types";
 
 function mapRow(row: Record<string, unknown>): Booking {
@@ -126,6 +128,25 @@ export async function createBookingRequest(input: CreateBookingInput): Promise<B
     return { error: "Booking time range is invalid." };
   }
 
+  // Fetch charger pricing + host availability window in one round-trip.
+  const charger = await supabase
+    .from("chargers")
+    .select("price_per_kwh, host_id, availability_window")
+    .eq("id", input.chargerId)
+    .single();
+
+  if (charger.error || !charger.data) return { error: "Selected charger could not be found." };
+
+  // Enforce host's declared availability window (days + hours).
+  const availabilityCheck = validateBookingAvailability(
+    charger.data.availability_window as ChargerAvailabilityWindow | null,
+    input.startTimeIso,
+    input.endTimeIso,
+  );
+  if (!availabilityCheck.ok) {
+    return { error: availabilityCheck.reason };
+  }
+
   // Check for overlapping bookings on the same charger
   const { count: overlapCount } = await supabase
     .from("bookings")
@@ -138,15 +159,6 @@ export async function createBookingRequest(input: CreateBookingInput): Promise<B
   if (overlapCount && overlapCount > 0) {
     return { conflict: true };
   }
-
-  // Calculate amounts
-  const charger = await supabase
-    .from("chargers")
-    .select("price_per_kwh, host_id")
-    .eq("id", input.chargerId)
-    .single();
-
-  if (charger.error || !charger.data) return { error: "Selected charger could not be found." };
 
   const pricePerKwh = Number(charger.data.price_per_kwh);
   const subtotalAmount = pricePerKwh * input.estimatedKWh;
@@ -284,6 +296,44 @@ export async function endSession(
   actualKwh: number
 ): Promise<void> {
   await reconcileAndCapture(bookingId, actualKwh);
+}
+
+/**
+ * Finalize a booking directly when Stripe is unavailable (test mode / no PI).
+ * Mirrors the amount math in stripe-reconcile-payment so the DB ends up in the
+ * same shape as a real capture.
+ */
+export async function finalizeBookingManually(
+  bookingId: string,
+  actualKwh: number,
+): Promise<void> {
+  const { data, error } = await supabase
+    .from("bookings")
+    .select("charger_id, chargers:chargers(price_per_kwh)")
+    .eq("id", bookingId)
+    .single();
+  if (error) throw error;
+
+  const priceRaw = (data as { chargers?: { price_per_kwh?: number | string } | null } | null)
+    ?.chargers?.price_per_kwh;
+  const pricePerKwh = Number(priceRaw ?? 0);
+
+  const subtotal = actualKwh * pricePerKwh;
+  const platformFee = subtotal * (AppConfig.PLATFORM_FEE_PERCENT / 100);
+  const actualTotal = subtotal + platformFee;
+  const hostPayout = subtotal * (1 - AppConfig.HOST_FEE_PERCENT / 100);
+
+  const { error: updateError } = await supabase
+    .from("bookings")
+    .update({
+      actual_kwh: actualKwh,
+      actual_amount: Math.round(actualTotal * 100) / 100,
+      host_payout_amount: Math.round(hostPayout * 100) / 100,
+      status: "completed",
+      session_ended_at: new Date().toISOString(),
+    })
+    .eq("id", bookingId);
+  if (updateError) throw updateError;
 }
 
 /**

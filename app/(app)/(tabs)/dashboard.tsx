@@ -262,7 +262,7 @@ export default function DriverHomeScreen() {
                 <Animated.View entering={FadeInDown.delay(200).duration(350)} style={styles.actionsRow}>
                   {[
                     { icon: "search", label: "Discover", route: "/(app)/(tabs)/discover", color: Colors.primary, bg: Colors.primaryLight },
-                    { icon: "map", label: "Plan Trip", route: "/(app)/(tabs)/range-calculator", color: Colors.info, bg: Colors.infoLight },
+                    { icon: "map", label: "Plan Trip", route: "/(app)/(tabs)/trip", color: Colors.info, bg: Colors.infoLight },
                     { icon: "calendar", label: "Bookings", route: "/(app)/(tabs)/bookings", color: Colors.warning, bg: Colors.warningLight },
                     { icon: "person", label: "Profile", route: "/(app)/(tabs)/profile", color: Colors.info, bg: Colors.infoLight },
                   ].map((action) => (

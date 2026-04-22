@@ -82,6 +82,7 @@ export default function HostBookingDetailScreen() {
   const { actions } = useHostBookings(userId);
 
   const [note, setNote] = useState("");
+  const [actualKwhText, setActualKwhText] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
 
   // Fetch driver profile
@@ -150,25 +151,38 @@ export default function HostBookingDetailScreen() {
 
   const handleMarkComplete = useCallback(async () => {
     if (!booking) return;
-    Alert.alert("Mark Complete", "Mark this session as completed?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Complete",
-        onPress: async () => {
-          setActionLoading(true);
-          try {
-            await actions.markCompleted(booking, note.trim() || undefined);
-            refetch();
-            Alert.alert("Done", "Session marked as completed.");
-          } catch {
-            Alert.alert("Error", "Could not complete booking. Try again.");
-          } finally {
-            setActionLoading(false);
-          }
+    const kwh = parseFloat(actualKwhText);
+    if (isNaN(kwh) || kwh <= 0) {
+      Alert.alert(
+        "Actual kWh required",
+        "Enter the actual kWh delivered so the driver is charged the correct amount.",
+      );
+      return;
+    }
+    Alert.alert(
+      "Mark Complete",
+      `Charge the driver for ${kwh.toFixed(1)} kWh actual usage?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Complete",
+          onPress: async () => {
+            setActionLoading(true);
+            try {
+              await actions.markCompleted(booking, kwh);
+              refetch();
+              Alert.alert("Done", "Session completed and payment captured.");
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : "Could not complete booking.";
+              Alert.alert("Error", msg);
+            } finally {
+              setActionLoading(false);
+            }
+          },
         },
-      },
-    ]);
-  }, [booking, note, actions, refetch]);
+      ],
+    );
+  }, [booking, actualKwhText, actions, refetch]);
 
   const durationHours = useMemo(() => {
     if (!booking) return 0;
@@ -360,6 +374,26 @@ export default function HostBookingDetailScreen() {
           </Animated.View>
         )}
 
+        {/* Actual kWh input when session is live */}
+        {booking.status === "active" && (
+          <Animated.View entering={FadeInDown.delay(400).duration(300)}>
+            <PremiumCard style={styles.section}>
+              <SectionTitle
+                title="Actual kWh delivered"
+                subtitle="Driver is charged on this amount — the authorisation hold is reduced to match."
+              />
+              <TextInput
+                style={styles.noteInput}
+                placeholder={String(booking.estimatedKWh)}
+                placeholderTextColor={Colors.textMuted}
+                value={actualKwhText}
+                onChangeText={setActualKwhText}
+                keyboardType="decimal-pad"
+              />
+            </PremiumCard>
+          </Animated.View>
+        )}
+
         <View style={{ height: insets.bottom + 100 }} />
       </ScrollView>
 
@@ -387,12 +421,17 @@ export default function HostBookingDetailScreen() {
               />
             </>
           )}
-          {isActive && (
+          {booking.status === "active" && (
             <PrimaryCTA
               label="Mark session complete"
               onPress={handleMarkComplete}
               loading={actionLoading}
             />
+          )}
+          {booking.status === "approved" && (
+            <Text style={styles.waitingForArrival}>
+              Waiting for driver to arrive before session can be completed.
+            </Text>
           )}
         </View>
       )}
@@ -495,6 +534,13 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
     minHeight: 80,
     textAlignVertical: "top",
+  },
+
+  waitingForArrival: {
+    ...Typography.caption,
+    color: Colors.textMuted,
+    flex: 1,
+    textAlign: "center",
   },
 
   // Sticky bar

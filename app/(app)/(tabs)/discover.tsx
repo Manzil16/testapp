@@ -187,19 +187,38 @@ export default function DiscoverScreen() {
                 )}
 
                 {/* Charger markers with price labels */}
-                {data.chargers.map((charger) => (
-                  <Marker
-                    key={charger.id}
-                    coordinate={{ latitude: charger.latitude, longitude: charger.longitude }}
-                    onPress={() => setSelectedChargerId(charger.id)}
-                  >
-                    <View style={[styles.priceMarker, selectedChargerId === charger.id && styles.priceMarkerActive]}>
-                      <Text style={[styles.priceMarkerText, selectedChargerId === charger.id && styles.priceMarkerTextActive]}>
-                        ${charger.pricingPerKwh.toFixed(2)}
-                      </Text>
-                    </View>
-                  </Marker>
-                ))}
+                {data.chargers.map((charger) => {
+                  const isSelected = selectedChargerId === charger.id;
+                  return (
+                    <Marker
+                      key={charger.id}
+                      coordinate={{ latitude: charger.latitude, longitude: charger.longitude }}
+                      anchor={{ x: 0.5, y: 0.5 }}
+                      stopPropagation
+                      tracksViewChanges={isSelected}
+                      onPress={() => setSelectedChargerId(charger.id)}
+                    >
+                      {/* Outer wrapper expands tap area beyond the visible pill */}
+                      <View style={styles.priceMarkerHit}>
+                        <View
+                          style={[
+                            styles.priceMarker,
+                            isSelected && styles.priceMarkerActive,
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.priceMarkerText,
+                              isSelected && styles.priceMarkerTextActive,
+                            ]}
+                          >
+                            ${charger.pricingPerKwh.toFixed(2)}
+                          </Text>
+                        </View>
+                      </View>
+                    </Marker>
+                  );
+                })}
               </MapView>
 
               <PrimaryCTA
@@ -389,11 +408,21 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: "#FFFFFF",
   },
+  // Invisible tap-area expander wrapping the visible pill.
+  priceMarkerHit: {
+    padding: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   // Price marker (Airbnb-style)
   priceMarker: {
     backgroundColor: Colors.surface,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    minWidth: 52,
+    minHeight: 32,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    alignItems: "center",
+    justifyContent: "center",
     borderRadius: Radius.pill,
     borderWidth: 1,
     borderColor: Colors.border,
