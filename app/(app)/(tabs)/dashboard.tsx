@@ -1,12 +1,6 @@
 import { useMemo } from "react";
 import { useRouter } from "expo-router";
-import {
-  FlatList,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { FlatList, RefreshControl, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -44,9 +38,20 @@ function getGreeting(): string {
   return "Good evening";
 }
 
-const ANNOUNCEMENT_COLORS: Record<string, { bg: string; icon: keyof typeof Ionicons.glyphMap; color: string }> = {
-  info: { bg: Colors.infoLight, icon: "information-circle", color: Colors.info },
-  warning: { bg: Colors.warningLight, icon: "alert-circle", color: Colors.warning },
+const ANNOUNCEMENT_COLORS: Record<
+  string,
+  { bg: string; icon: keyof typeof Ionicons.glyphMap; color: string }
+> = {
+  info: {
+    bg: Colors.infoLight,
+    icon: "information-circle",
+    color: Colors.info,
+  },
+  warning: {
+    bg: Colors.warningLight,
+    icon: "alert-circle",
+    color: Colors.warning,
+  },
   promo: { bg: Colors.primaryLight, icon: "gift", color: Colors.primary },
 };
 
@@ -65,7 +70,8 @@ export default function DriverHomeScreen() {
 
   const activeBooking = data.activeBooking;
   const activeChargerName = activeBooking
-    ? data.chargersById[activeBooking.chargerId]?.name || activeBooking.chargerId
+    ? data.chargersById[activeBooking.chargerId]?.name ||
+      activeBooking.chargerId
     : "";
 
   const firstName = profile?.displayName?.split(" ")[0] || "Driver";
@@ -78,7 +84,13 @@ export default function DriverHomeScreen() {
             data={[]}
             keyExtractor={(_, index) => String(index)}
             renderItem={() => null}
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#00BFA5" />}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                tintColor="#00BFA5"
+              />
+            }
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.content}
             ListHeaderComponent={
@@ -98,18 +110,28 @@ export default function DriverHomeScreen() {
                         size="lg"
                       />
                       <View style={styles.heroTextBlock}>
-                        <Text style={styles.heroGreeting}>{getGreeting()},</Text>
+                        <Text style={styles.heroGreeting}>
+                          {getGreeting()},
+                        </Text>
                         <Text style={styles.heroName}>{firstName}</Text>
                       </View>
                       <PressableScale
-                        onPress={() => router.push("/(app)/notifications" as any)}
+                        onPress={() =>
+                          router.push("/(app)/notifications" as any)
+                        }
                         style={styles.notifBtn}
                       >
-                        <Ionicons name="notifications-outline" size={22} color="#FFFFFF" />
+                        <Ionicons
+                          name="notifications-outline"
+                          size={22}
+                          color="#FFFFFF"
+                        />
                         {counts.unreadNotifications > 0 && (
                           <View style={styles.notifBadge}>
                             <Text style={styles.notifBadgeText}>
-                              {counts.unreadNotifications > 9 ? "9+" : counts.unreadNotifications}
+                              {counts.unreadNotifications > 9
+                                ? "9+"
+                                : counts.unreadNotifications}
                             </Text>
                           </View>
                         )}
@@ -120,22 +142,30 @@ export default function DriverHomeScreen() {
                     <View style={styles.heroStatsRow}>
                       {isLoading ? (
                         <View style={styles.heroStatsLoading}>
-                          <Text style={styles.heroStatsLoadingText}>Loading...</Text>
+                          <Text style={styles.heroStatsLoadingText}>
+                            Loading...
+                          </Text>
                         </View>
                       ) : (
                         <>
                           <View style={styles.heroStatItem}>
-                            <Text style={styles.heroStatValue}>{data.stats.totalTrips}</Text>
+                            <Text style={styles.heroStatValue}>
+                              {data.stats.totalTrips}
+                            </Text>
                             <Text style={styles.heroStatLabel}>Trips</Text>
                           </View>
                           <View style={styles.heroStatDivider} />
                           <View style={styles.heroStatItem}>
-                            <Text style={styles.heroStatValue}>{data.stats.totalBookings}</Text>
+                            <Text style={styles.heroStatValue}>
+                              {data.stats.totalBookings}
+                            </Text>
                             <Text style={styles.heroStatLabel}>Bookings</Text>
                           </View>
                           <View style={styles.heroStatDivider} />
                           <View style={styles.heroStatItem}>
-                            <Text style={styles.heroStatValue}>{data.stats.vehiclesRegistered}</Text>
+                            <Text style={styles.heroStatValue}>
+                              {data.stats.vehiclesRegistered}
+                            </Text>
                             <Text style={styles.heroStatLabel}>Vehicles</Text>
                           </View>
                         </>
@@ -148,13 +178,34 @@ export default function DriverHomeScreen() {
                 {announcements.length > 0 && (
                   <Animated.View entering={FadeInDown.delay(50).duration(350)}>
                     {announcements.map((ann) => {
-                      const config = ANNOUNCEMENT_COLORS[ann.type] || ANNOUNCEMENT_COLORS.info;
+                      const config =
+                        ANNOUNCEMENT_COLORS[ann.type] ||
+                        ANNOUNCEMENT_COLORS.info;
                       return (
-                        <View key={ann.id} style={[styles.announcementBanner, { backgroundColor: config.bg }]}>
-                          <Ionicons name={config.icon} size={20} color={config.color} />
+                        <View
+                          key={ann.id}
+                          style={[
+                            styles.announcementBanner,
+                            { backgroundColor: config.bg },
+                          ]}
+                        >
+                          <Ionicons
+                            name={config.icon}
+                            size={20}
+                            color={config.color}
+                          />
                           <View style={{ flex: 1 }}>
-                            <Text style={[styles.announcementTitle, { color: config.color }]}>{ann.title}</Text>
-                            <Text style={styles.announcementBody}>{ann.body}</Text>
+                            <Text
+                              style={[
+                                styles.announcementTitle,
+                                { color: config.color },
+                              ]}
+                            >
+                              {ann.title}
+                            </Text>
+                            <Text style={styles.announcementBody}>
+                              {ann.body}
+                            </Text>
                           </View>
                         </View>
                       );
@@ -171,23 +222,37 @@ export default function DriverHomeScreen() {
                         router.push("/(app)/(tabs)/bookings" as any)
                       }
                     >
-                      {activeBooking.status === "active" && <View style={styles.activePulse} />}
+                      {activeBooking.status === "active" && (
+                        <View style={styles.activePulse} />
+                      )}
                       <View style={styles.activeContent}>
                         <View style={styles.activeIconCircle}>
                           <Ionicons
-                            name={activeBooking.status === "active" ? "flash" : activeBooking.status === "approved" ? "checkmark-circle" : "time"}
+                            name={
+                              activeBooking.status === "active"
+                                ? "flash"
+                                : activeBooking.status === "approved"
+                                  ? "checkmark-circle"
+                                  : "time"
+                            }
                             size={20}
                             color={Colors.primary}
                           />
                         </View>
                         <View style={{ flex: 1 }}>
                           <View style={styles.activeLabelRow}>
-                            <Text style={styles.activeLabel}>
+                            <Text
+                              style={
+                                activeBooking.status === "requested"
+                                  ? styles.activeLabel
+                                  : styles.pendingApprovalLabel
+                              }
+                            >
                               {activeBooking.status === "active"
                                 ? "Charging"
                                 : activeBooking.status === "approved"
-                                ? "Booking Approved"
-                                : "Pending Approval"}
+                                  ? "Booking Approved"
+                                  : "Pending Approval"}
                             </Text>
                             {activeBooking.status === "active" && (
                               <>
@@ -196,20 +261,30 @@ export default function DriverHomeScreen() {
                               </>
                             )}
                           </View>
-                          <Text style={styles.activeName}>{activeChargerName}</Text>
+                          <Text style={styles.activeName}>
+                            {activeChargerName}
+                          </Text>
                           <Text style={styles.activeTime}>
-                            {new Date(activeBooking.startTimeIso).toLocaleTimeString(undefined, {
+                            {new Date(
+                              activeBooking.startTimeIso,
+                            ).toLocaleTimeString(undefined, {
                               hour: "2-digit",
                               minute: "2-digit",
                             })}
                             {" — "}
-                            {new Date(activeBooking.endTimeIso).toLocaleTimeString(undefined, {
+                            {new Date(
+                              activeBooking.endTimeIso,
+                            ).toLocaleTimeString(undefined, {
                               hour: "2-digit",
                               minute: "2-digit",
                             })}
                           </Text>
                         </View>
-                        <Ionicons name="chevron-forward" size={20} color={Colors.textMuted} />
+                        <Ionicons
+                          name="chevron-forward"
+                          size={20}
+                          color={Colors.textMuted}
+                        />
                       </View>
                     </PressableScale>
                   </Animated.View>
@@ -217,18 +292,30 @@ export default function DriverHomeScreen() {
                   <Animated.View entering={FadeInDown.delay(100).duration(350)}>
                     <PressableScale
                       style={styles.discoverCard}
-                      onPress={() => router.push("/(app)/(tabs)/discover" as any)}
+                      onPress={() =>
+                        router.push("/(app)/(tabs)/discover" as any)
+                      }
                     >
                       <View style={styles.discoverIconCircle}>
-                        <Ionicons name="search" size={22} color={Colors.primary} />
+                        <Ionicons
+                          name="search"
+                          size={22}
+                          color={Colors.primary}
+                        />
                       </View>
                       <View style={{ flex: 1 }}>
-                        <Text style={styles.discoverTitle}>Find your next charge</Text>
+                        <Text style={styles.discoverTitle}>
+                          Find your next charge
+                        </Text>
                         <Text style={styles.discoverSubtitle}>
                           Discover trusted chargers nearby
                         </Text>
                       </View>
-                      <Ionicons name="arrow-forward" size={18} color={Colors.primary} />
+                      <Ionicons
+                        name="arrow-forward"
+                        size={18}
+                        color={Colors.primary}
+                      />
                     </PressableScale>
                   </Animated.View>
                 )}
@@ -238,14 +325,24 @@ export default function DriverHomeScreen() {
                   <Animated.View entering={FadeInDown.delay(150).duration(350)}>
                     <PressableScale
                       style={styles.nearestCard}
-                      onPress={() => router.push(`/(app)/chargers/${data.nearestCharger!.id}` as any)}
+                      onPress={() =>
+                        router.push(
+                          `/(app)/chargers/${data.nearestCharger!.id}` as any,
+                        )
+                      }
                     >
                       <View style={styles.nearestIcon}>
-                        <Ionicons name="navigate" size={18} color={Colors.primary} />
+                        <Ionicons
+                          name="navigate"
+                          size={18}
+                          color={Colors.primary}
+                        />
                       </View>
                       <View style={{ flex: 1 }}>
                         <Text style={styles.nearestTitle}>Nearest Charger</Text>
-                        <Text style={styles.nearestName}>{data.nearestCharger.name}</Text>
+                        <Text style={styles.nearestName}>
+                          {data.nearestCharger.name}
+                        </Text>
                       </View>
                       {data.nearestCharger.distanceKm !== null && (
                         <InfoPill
@@ -253,26 +350,66 @@ export default function DriverHomeScreen() {
                           variant="primary"
                         />
                       )}
-                      <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />
+                      <Ionicons
+                        name="chevron-forward"
+                        size={18}
+                        color={Colors.textMuted}
+                      />
                     </PressableScale>
                   </Animated.View>
                 )}
 
                 {/* Quick Actions */}
-                <Animated.View entering={FadeInDown.delay(200).duration(350)} style={styles.actionsRow}>
+                <Animated.View
+                  entering={FadeInDown.delay(200).duration(350)}
+                  style={styles.actionsRow}
+                >
                   {[
-                    { icon: "search", label: "Discover", route: "/(app)/(tabs)/discover", color: Colors.primary, bg: Colors.primaryLight },
-                    { icon: "map", label: "Plan Trip", route: "/(app)/(tabs)/trip", color: Colors.info, bg: Colors.infoLight },
-                    { icon: "calendar", label: "Bookings", route: "/(app)/(tabs)/bookings", color: Colors.warning, bg: Colors.warningLight },
-                    { icon: "person", label: "Profile", route: "/(app)/(tabs)/profile", color: Colors.info, bg: Colors.infoLight },
+                    {
+                      icon: "search",
+                      label: "Discover",
+                      route: "/(app)/(tabs)/discover",
+                      color: Colors.primary,
+                      bg: Colors.primaryLight,
+                    },
+                    {
+                      icon: "map",
+                      label: "Plan Trip",
+                      route: "/(app)/(tabs)/trip",
+                      color: Colors.info,
+                      bg: Colors.infoLight,
+                    },
+                    {
+                      icon: "calendar",
+                      label: "Bookings",
+                      route: "/(app)/(tabs)/bookings",
+                      color: Colors.warning,
+                      bg: Colors.warningLight,
+                    },
+                    {
+                      icon: "person",
+                      label: "Profile",
+                      route: "/(app)/(tabs)/profile",
+                      color: Colors.info,
+                      bg: Colors.infoLight,
+                    },
                   ].map((action) => (
                     <PressableScale
                       key={action.label}
                       onPress={() => router.push(action.route as any)}
                       style={styles.actionCard}
                     >
-                      <View style={[styles.actionIconCircle, { backgroundColor: action.bg }]}>
-                        <Ionicons name={action.icon as any} size={20} color={action.color} />
+                      <View
+                        style={[
+                          styles.actionIconCircle,
+                          { backgroundColor: action.bg },
+                        ]}
+                      >
+                        <Ionicons
+                          name={action.icon as any}
+                          size={20}
+                          color={action.color}
+                        />
                       </View>
                       <Text style={styles.actionLabel}>{action.label}</Text>
                     </PressableScale>
@@ -287,7 +424,11 @@ export default function DriverHomeScreen() {
                         key={nudge.id}
                         style={styles.nudgeCard}
                         onPress={() => {
-                          if (nudge.id === "first-booking" || nudge.id === "morning" || nudge.id === "evening") {
+                          if (
+                            nudge.id === "first-booking" ||
+                            nudge.id === "morning" ||
+                            nudge.id === "evening"
+                          ) {
                             router.push("/(app)/(tabs)/discover" as any);
                           } else if (nudge.id === "add-vehicle") {
                             router.push("/(app)/driver/vehicle" as any);
@@ -295,13 +436,23 @@ export default function DriverHomeScreen() {
                         }}
                       >
                         <View style={styles.nudgeIconCircle}>
-                          <Ionicons name={nudge.icon as any} size={18} color={Colors.primary} />
+                          <Ionicons
+                            name={nudge.icon as any}
+                            size={18}
+                            color={Colors.primary}
+                          />
                         </View>
                         <View style={{ flex: 1 }}>
                           <Text style={styles.nudgeTitle}>{nudge.title}</Text>
-                          <Text style={styles.nudgeSubtitle}>{nudge.subtitle}</Text>
+                          <Text style={styles.nudgeSubtitle}>
+                            {nudge.subtitle}
+                          </Text>
                         </View>
-                        <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
+                        <Ionicons
+                          name="chevron-forward"
+                          size={16}
+                          color={Colors.textMuted}
+                        />
                       </PressableScale>
                     ))}
                   </Animated.View>
@@ -312,14 +463,24 @@ export default function DriverHomeScreen() {
                   <Animated.View entering={FadeInDown.delay(280).duration(350)}>
                     <PressableScale
                       style={styles.profileNudge}
-                      onPress={() => router.push("/(app)/(tabs)/profile" as any)}
+                      onPress={() =>
+                        router.push("/(app)/(tabs)/profile" as any)
+                      }
                     >
                       <View style={styles.profileNudgeIcon}>
-                        <Ionicons name="person-add" size={18} color={Colors.warning} />
+                        <Ionicons
+                          name="person-add"
+                          size={18}
+                          color={Colors.warning}
+                        />
                       </View>
                       <View style={{ flex: 1 }}>
-                        <Text style={styles.nudgeTitle}>Complete your profile</Text>
-                        <Text style={styles.nudgeSubtitle}>Add your photo and phone to build trust</Text>
+                        <Text style={styles.nudgeTitle}>
+                          Complete your profile
+                        </Text>
+                        <Text style={styles.nudgeSubtitle}>
+                          Add your photo and phone to build trust
+                        </Text>
                       </View>
                       <View style={styles.profileNudgeBadge}>
                         <Text style={styles.profileNudgeBadgeText}>1</Text>
@@ -333,19 +494,30 @@ export default function DriverHomeScreen() {
                   <Animated.View entering={FadeInDown.delay(290).duration(350)}>
                     <PressableScale
                       style={styles.nudgeCard}
-                      onPress={() => router.push("/(app)/(tabs)/bookings" as any)}
+                      onPress={() =>
+                        router.push("/(app)/(tabs)/bookings" as any)
+                      }
                     >
                       <View style={styles.nudgeIconCircle}>
-                        <Ionicons name="star-half" size={18} color={Colors.primary} />
+                        <Ionicons
+                          name="star-half"
+                          size={18}
+                          color={Colors.primary}
+                        />
                       </View>
                       <View style={{ flex: 1 }}>
                         <Text style={styles.nudgeTitle}>
-                          {counts.sessions} unrated {counts.sessions === 1 ? "session" : "sessions"}
+                          {counts.sessions} unrated{" "}
+                          {counts.sessions === 1 ? "session" : "sessions"}
                         </Text>
-                        <Text style={styles.nudgeSubtitle}>Leave a review to help the community</Text>
+                        <Text style={styles.nudgeSubtitle}>
+                          Leave a review to help the community
+                        </Text>
                       </View>
                       <View style={styles.profileNudgeBadge}>
-                        <Text style={styles.profileNudgeBadgeText}>{counts.sessions}</Text>
+                        <Text style={styles.profileNudgeBadgeText}>
+                          {counts.sessions}
+                        </Text>
                       </View>
                     </PressableScale>
                   </Animated.View>
@@ -357,7 +529,9 @@ export default function DriverHomeScreen() {
                     title="Nearby Chargers"
                     subtitle="Sorted by distance from you"
                     actionLabel="See All"
-                    onAction={() => router.push("/(app)/(tabs)/discover" as any)}
+                    onAction={() =>
+                      router.push("/(app)/(tabs)/discover" as any)
+                    }
                   />
                 </Animated.View>
 
@@ -383,11 +557,17 @@ export default function DriverHomeScreen() {
                           suburb={item.suburb}
                           powerKw={item.maxPowerKw}
                           pricePerKwh={item.pricingPerKwh}
-                          distanceLabel={item.distanceKm !== null ? formatDistance(item.distanceKm) : undefined}
+                          distanceLabel={
+                            item.distanceKm !== null
+                              ? formatDistance(item.distanceKm)
+                              : undefined
+                          }
                           isNearest={index === 0}
                           images={item.images}
                           connectorTypes={item.connectors?.map((c) => c.type)}
-                          onPress={() => router.push(`/(app)/chargers/${item.id}` as any)}
+                          onPress={() =>
+                            router.push(`/(app)/chargers/${item.id}` as any)
+                          }
                         />
                       </AnimatedListItem>
                     )}
@@ -398,7 +578,9 @@ export default function DriverHomeScreen() {
                           title="No nearby chargers yet"
                           message="Try refreshing or explore the map."
                           actionLabel="Open Explore"
-                          onAction={() => router.push("/(app)/(tabs)/discover" as any)}
+                          onAction={() =>
+                            router.push("/(app)/(tabs)/discover" as any)
+                          }
                         />
                       )
                     }
@@ -569,6 +751,13 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "600",
     color: Colors.primary,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  pendingApprovalLabel: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: Colors.warning,
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
