@@ -75,7 +75,11 @@ export const Colors = {
 } as const;
 
 // ─── Color scheme type ───
-export type ColorScheme = { [K in keyof typeof Colors]: (typeof Colors)[K] extends readonly string[] ? readonly string[] : string };
+export type ColorScheme = {
+  [K in keyof typeof Colors]: (typeof Colors)[K] extends readonly string[]
+    ? readonly string[]
+    : string;
+};
 
 // ─── LightColors kept as alias for backward compatibility ───
 export const LightColors: ColorScheme = Colors;
@@ -203,7 +207,7 @@ export const Shadows = {
   button: {
     shadowColor: "#00BFA5",
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.20,
+    shadowOpacity: 0.2,
     shadowRadius: 12,
     elevation: 4,
   },
