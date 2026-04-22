@@ -54,3 +54,10 @@ app-example
 /ios
 /android
 .vscode/
+
+# cruft / tooling output
+graphify-out/
+all-source-dump.txt
+*.zip
+ANALYZE_*.md
+PANEL_QUESTIONS.md
