@@ -133,9 +133,6 @@ export default function DiscoverScreen() {
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={["bottom"]}>
       <Animated.View style={[{ flex: 1 }, entranceStyle]}>
         <ScreenContainer scrollable={false}>
-          <Text style={Typography.pageTitle}>Explore Chargers</Text>
-          <Text style={Typography.body}>Map and list discovery with live availability.</Text>
-
           <View style={styles.controlsWrap}>
             <SearchBar
               value={data.searchText}

@@ -169,7 +169,6 @@ export default function VehicleProfileScreen() {
     <SafeAreaView style={styles.safe} edges={["bottom"]}>
       <ScreenContainer>
         <Animated.View entering={FadeIn.duration(240)}>
-          <Text style={Typography.pageTitle}>Vehicle Profile</Text>
           <Text style={Typography.body}>Used in trip planning and battery predictions.</Text>
         </Animated.View>
 

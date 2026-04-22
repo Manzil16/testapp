@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import { useRouter } from "expo-router";
-import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
+import { FlatList, RefreshControl, StyleSheet, Text, View } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -116,22 +116,8 @@ export default function NotificationsScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
+    <SafeAreaView style={styles.safe} edges={["bottom"]}>
       <ScreenContainer scrollable={false}>
-        <View style={styles.header}>
-          <Pressable onPress={() => router.back()} hitSlop={12}>
-            <Ionicons name="arrow-back" size={24} color={Colors.textPrimary} />
-          </Pressable>
-          <View style={{ flex: 1 }}>
-            <Text style={Typography.pageTitle}>Notifications</Text>
-          </View>
-          {unreadCount > 0 && (
-            <View style={styles.countBadge}>
-              <Text style={styles.countText}>{unreadCount}</Text>
-            </View>
-          )}
-        </View>
-
         <SegmentedControl
           segments={[
             { id: "all", label: "All" },
@@ -209,25 +195,6 @@ const styles = StyleSheet.create({
   safe: {
     flex: 1,
     backgroundColor: Colors.background,
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.md,
-    marginBottom: Spacing.sm,
-  },
-  countBadge: {
-    backgroundColor: Colors.error,
-    borderRadius: Radius.full,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    minWidth: 24,
-    alignItems: "center",
-  },
-  countText: {
-    color: Colors.textInverse,
-    fontSize: 12,
-    fontWeight: "700",
   },
   segmented: {
     marginBottom: Spacing.md,

@@ -159,6 +159,7 @@ export default function AppTabsLayout() {
         options={{
           ...sharedHeaderOptions,
           title: "Explore",
+          headerTitle: "Explore chargers",
           href: isDriver ? undefined : null,
           tabBarIcon: icon("search"),
         }}
@@ -168,6 +169,7 @@ export default function AppTabsLayout() {
         options={{
           ...sharedHeaderOptions,
           title: "Trips",
+          headerTitle: "Trip planner",
           href: isDriver ? undefined : null,
           tabBarIcon: icon("map"),
         }}
@@ -177,6 +179,7 @@ export default function AppTabsLayout() {
         options={{
           ...sharedHeaderOptions,
           title: "Bookings",
+          headerTitle: "Your bookings",
           href: isDriver ? undefined : null,
           tabBarIcon: BookingsIcon,
         }}
@@ -217,6 +220,7 @@ export default function AppTabsLayout() {
         options={{
           ...sharedHeaderOptions,
           title: "Overview",
+          headerTitle: "Platform overview",
           href: isAdmin ? undefined : null,
           tabBarIcon: icon("grid"),
         }}
@@ -226,6 +230,7 @@ export default function AppTabsLayout() {
         options={{
           ...sharedHeaderOptions,
           title: "Verify",
+          headerTitle: "Charger verification",
           href: isAdmin ? undefined : null,
           tabBarIcon: AdminVerifyIcon,
         }}
@@ -234,9 +239,10 @@ export default function AppTabsLayout() {
         name="admin-trust"
         options={{
           ...sharedHeaderOptions,
-          title: "Trust",
+          title: "Database",
+          headerTitle: "Platform database",
           href: isAdmin ? undefined : null,
-          tabBarIcon: icon("people"),
+          tabBarIcon: icon("server"),
         }}
       />
       <Tabs.Screen
@@ -244,6 +250,7 @@ export default function AppTabsLayout() {
         options={{
           ...sharedHeaderOptions,
           title: "Config",
+          headerTitle: "Platform config",
           href: isAdmin ? undefined : null,
           tabBarIcon: icon("settings"),
         }}

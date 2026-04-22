@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { StyleSheet, Text, View } from "react-native";
+import { Linking, Platform, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import Animated, { FadeIn, FadeInDown, ZoomIn } from "react-native-reanimated";
@@ -19,12 +19,27 @@ export default function PaymentSuccessScreen() {
   const params = useLocalSearchParams<{
     bookingId: string;
     chargerName: string;
+    chargerLat: string;
+    chargerLng: string;
     totalAmount: string;
     last4: string;
     brand: string;
   }>();
 
   const totalAmount = Number(params.totalAmount) || 0;
+  const chargerLat = Number(params.chargerLat);
+  const chargerLng = Number(params.chargerLng);
+  const hasCoords = Number.isFinite(chargerLat) && Number.isFinite(chargerLng);
+
+  const handleNavigate = () => {
+    if (!hasCoords) return;
+    const url = Platform.select({
+      ios: `maps:?daddr=${chargerLat},${chargerLng}`,
+      android: `google.navigation:q=${chargerLat},${chargerLng}`,
+      default: `https://www.google.com/maps/dir/?api=1&destination=${chargerLat},${chargerLng}`,
+    });
+    if (url) Linking.openURL(url);
+  };
 
   return (
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
@@ -131,18 +146,24 @@ export default function PaymentSuccessScreen() {
 
         {/* Actions */}
         <Animated.View entering={FadeIn.delay(1000).duration(300)} style={styles.actions}>
-          <GradientButton
-            label="View My Bookings"
+          {hasCoords ? (
+            <GradientButton
+              label="Navigate to charger"
+              onPress={handleNavigate}
+              style={styles.primaryBtn}
+            />
+          ) : null}
+          <SecondaryButton
+            label="View my bookings"
             onPress={() =>
               router.replace({
                 pathname: "/(app)/(tabs)/bookings" as any,
                 params: { segment: "upcoming" },
               })
             }
-            style={styles.primaryBtn}
           />
           <SecondaryButton
-            label="Back to Discover"
+            label="Back to discover"
             onPress={() => router.replace("/(app)/(tabs)/discover" as any)}
           />
         </Animated.View>

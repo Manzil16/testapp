@@ -105,11 +105,21 @@ export default function TripPlannerScreen() {
     await Linking.openURL(url);
   };
 
+  const navigateViaCharger = async (charger: { latitude: number; longitude: number }) => {
+    if (!data.origin || !data.destination) return;
+    const url =
+      `https://www.google.com/maps/dir/?api=1` +
+      `&origin=${data.origin.latitude},${data.origin.longitude}` +
+      `&destination=${data.destination.latitude},${data.destination.longitude}` +
+      `&waypoints=${charger.latitude},${charger.longitude}` +
+      `&travelmode=driving`;
+    await Linking.openURL(url);
+  };
+
   return (
     <SafeAreaView style={styles.safe} edges={["bottom"]}>
       <ScreenContainer>
         <Animated.View entering={FadeIn.duration(260)}>
-          <Text style={Typography.pageTitle}>Trip Planner</Text>
           <Text style={Typography.body}>Plan route, estimate battery, and save the trip.</Text>
         </Animated.View>
 
@@ -326,32 +336,39 @@ export default function TripPlannerScreen() {
                     keyExtractor={(item) => item.id}
                     scrollEnabled={false}
                     renderItem={({ item }) => (
-                      <TouchableOpacity
-                        style={styles.recommendCard}
-                        onPress={() => router.push(`/(app)/chargers/${item.id}` as any)}
-                      >
-                        <View style={styles.recommendHeaderRow}>
-                          <Text style={styles.recommendName} numberOfLines={1}>
-                            {item.name}
+                      <View style={styles.recommendCard}>
+                        <TouchableOpacity
+                          onPress={() => router.push(`/(app)/chargers/${item.id}` as any)}
+                        >
+                          <View style={styles.recommendHeaderRow}>
+                            <Text style={styles.recommendName} numberOfLines={1}>
+                              {item.name}
+                            </Text>
+                            <Text style={styles.recommendPrice}>
+                              ${item.pricingPerKwh.toFixed(2)}/kWh
+                            </Text>
+                          </View>
+                          <Text style={styles.recommendMeta} numberOfLines={2}>
+                            {item.address}
                           </Text>
-                          <Text style={styles.recommendPrice}>
-                            ${item.pricingPerKwh.toFixed(2)}/kWh
-                          </Text>
-                        </View>
-                        <Text style={styles.recommendMeta} numberOfLines={2}>
-                          {item.address}
-                        </Text>
-                        <View style={styles.recommendPillRow}>
-                          <InfoPill
-                            label={`${item.detourKm.toFixed(1)} km off route`}
-                            variant="primary"
-                          />
-                          <InfoPill label={`${item.maxPowerKw}kW`} variant="default" />
-                          {item.connectorTypes.slice(0, 2).map((c) => (
-                            <InfoPill key={c} label={c} variant="default" />
-                          ))}
-                        </View>
-                      </TouchableOpacity>
+                          <View style={styles.recommendPillRow}>
+                            <InfoPill
+                              label={`${item.detourKm.toFixed(1)} km off route`}
+                              variant="primary"
+                            />
+                            <InfoPill label={`${item.maxPowerKw}kW`} variant="default" />
+                            {item.connectorTypes.slice(0, 2).map((c) => (
+                              <InfoPill key={c} label={c} variant="default" />
+                            ))}
+                          </View>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.navigateBtn}
+                          onPress={() => navigateViaCharger(item)}
+                        >
+                          <Text style={styles.navigateBtnText}>Navigate via this charger →</Text>
+                        </TouchableOpacity>
+                      </View>
                     )}
                   />
                 )}
@@ -472,6 +489,18 @@ const styles = StyleSheet.create({
   recommendMeta: {
     ...Typography.caption,
     marginTop: 2,
+  },
+  navigateBtn: {
+    marginTop: Spacing.sm,
+    paddingVertical: Spacing.sm,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.primaryLight,
+    alignItems: "center",
+  },
+  navigateBtnText: {
+    ...Typography.caption,
+    color: Colors.primary,
+    fontWeight: "700",
   },
   mapsBtn: {
     marginTop: Spacing.md,

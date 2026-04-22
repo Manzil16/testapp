@@ -270,7 +270,6 @@ export default function AdminVerifyScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={["bottom"]}>
       <ScreenContainer>
-        <Text style={Typography.pageTitle}>Charger Verification</Text>
         <Text style={Typography.body}>
           {pendingChargers.length} charger{pendingChargers.length !== 1 ? "s" : ""} awaiting review
         </Text>

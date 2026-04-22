@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { StyleSheet, Text, View, Pressable } from "react-native";
-import { useRouter, useLocalSearchParams } from "expo-router";
+import { Stack, useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import {
@@ -128,6 +128,9 @@ export default function VerificationRequiredScreen() {
 
   return (
     <ScreenContainer>
+      <Stack.Screen
+        options={{ title: allCleared ? "You're verified" : "Complete verification" }}
+      />
       <View style={styles.header}>
         <View style={styles.iconCircle}>
           <Ionicons
@@ -136,9 +139,6 @@ export default function VerificationRequiredScreen() {
             color={allCleared ? Colors.success : Colors.warning}
           />
         </View>
-        <Text style={Typography.pageTitle}>
-          {allCleared ? "You're verified!" : "Complete Verification"}
-        </Text>
         <Text style={[Typography.body, styles.subtitle]}>
           {allCleared
             ? "All requirements met. You can now proceed."

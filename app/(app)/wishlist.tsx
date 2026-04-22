@@ -2,7 +2,6 @@ import { useCallback, useMemo } from "react";
 import { useRouter } from "expo-router";
 import {
   FlatList,
-  Pressable,
   RefreshControl,
   StyleSheet,
   Text,
@@ -67,23 +66,8 @@ export default function WishlistScreen() {
   }, [handleRefresh]);
 
   return (
-    <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
+    <SafeAreaView style={styles.safe} edges={["bottom"]}>
       <ScreenContainer scrollable={false}>
-        {/* Header */}
-        <View style={styles.header}>
-          <Pressable onPress={() => router.back()} hitSlop={12}>
-            <Ionicons name="arrow-back" size={24} color={Colors.textPrimary} />
-          </Pressable>
-          <View style={{ flex: 1 }}>
-            <Text style={Typography.pageTitle}>Saved Chargers</Text>
-          </View>
-          {chargers.length > 0 && (
-            <View style={styles.countBadge}>
-              <Text style={styles.countText}>{chargers.length}</Text>
-            </View>
-          )}
-        </View>
-
         <FlatList
           data={chargers}
           keyExtractor={(item) => item.id}
@@ -148,24 +132,6 @@ const styles = StyleSheet.create({
   safe: {
     flex: 1,
     backgroundColor: Colors.background,
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.md,
-    marginBottom: Spacing.sm,
-  },
-  countBadge: {
-    backgroundColor: Colors.primary,
-    borderRadius: Radius.full,
-    paddingHorizontal: 10,
-    paddingVertical: 2,
-    minWidth: 26,
-    alignItems: "center",
-  },
-  countText: {
-    ...Typography.badge,
-    color: Colors.textInverse,
   },
   listContent: {
     paddingBottom: Spacing.xxxl,

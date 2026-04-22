@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import {
   Alert,
   Image,
@@ -424,9 +424,9 @@ export default function HostChargerFormScreen() {
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={["bottom"]}>
+      <Stack.Screen options={{ title: chargerId ? "Edit charger" : "Add charger" }} />
       <ScreenContainer>
         <Animated.View entering={FadeIn.duration(220)}>
-          <Text style={Typography.pageTitle}>{chargerId ? "Edit Charger" : "Add Charger"}</Text>
           <Text style={Typography.body}>Create a high-quality listing for your charger.</Text>
         </Animated.View>
 

@@ -159,7 +159,6 @@ export default function DriverBookingsScreen() {
     <SafeAreaView style={styles.safe} edges={["bottom"]}>
       <Animated.View style={[{ flex: 1 }, entranceStyle]}>
         <ScreenContainer scrollable={false}>
-          <Text style={Typography.pageTitle}>Bookings</Text>
           <Text style={Typography.body}>Upcoming, active, and past charging sessions.</Text>
 
           <SegmentedControl

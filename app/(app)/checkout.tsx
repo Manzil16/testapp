@@ -12,7 +12,6 @@ import Animated, { FadeInDown } from "react-native-reanimated";
 import {
   GradientButton,
   PremiumCard,
-  PressableScale,
   ScreenContainer,
   SectionTitle,
   Typography,
@@ -46,6 +45,8 @@ export default function CheckoutScreen() {
     startTimeIso: string;
     endTimeIso: string;
     chargerName: string;
+    chargerLat: string;
+    chargerLng: string;
     totalAmount: string;
     platformFee: string;
     estimatedKWh: string;
@@ -58,6 +59,14 @@ export default function CheckoutScreen() {
   const estimatedKWh = Number(params.estimatedKWh) || 0;
   const pricePerKwh = Number(params.pricePerKwh) || 0;
   const subtotal = pricePerKwh * estimatedKWh;
+
+  const startDate = params.startTimeIso ? new Date(params.startTimeIso) : null;
+  const endDate = params.endTimeIso ? new Date(params.endTimeIso) : null;
+  const durationMinutes =
+    startDate && endDate ? Math.max(0, Math.round((endDate.getTime() - startDate.getTime()) / 60000)) : 0;
+  const durationLabel = formatDuration(durationMinutes);
+  const sameDay =
+    startDate && endDate && startDate.toDateString() === endDate.toDateString();
 
   const [processing, setProcessing] = useState(false);
 
@@ -117,6 +126,8 @@ export default function CheckoutScreen() {
         params: {
           bookingId: createdBookingId,
           chargerName: params.chargerName,
+          chargerLat: params.chargerLat ?? "",
+          chargerLng: params.chargerLng ?? "",
           totalAmount: String(totalAmount),
           brand: paymentIntent.card?.brand || "",
           last4: paymentIntent.card?.last4 || "",
@@ -142,14 +153,35 @@ export default function CheckoutScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={["bottom"]}>
       <ScreenContainer bottomInset={100}>
-        {/* Header */}
-        <View style={styles.header}>
-          <PressableScale onPress={() => router.back()} style={styles.backBtn}>
-            <Ionicons name="arrow-back" size={20} color={Colors.textPrimary} />
-          </PressableScale>
-          <Text style={Typography.pageTitle}>Checkout</Text>
-          <View style={{ width: 38 }} />
-        </View>
+        {/* Booking Time — surfaced prominently before payment */}
+        {startDate && endDate ? (
+          <Animated.View entering={FadeInDown.duration(220)}>
+            <PremiumCard style={styles.timeCard}>
+              <View style={styles.timeHeaderRow}>
+                <Ionicons name="calendar" size={18} color={Colors.primary} />
+                <Text style={styles.timeHeader}>Your booking time</Text>
+                <View style={styles.durationBadge}>
+                  <Text style={styles.durationText}>{durationLabel}</Text>
+                </View>
+              </View>
+              <View style={styles.timeRangeRow}>
+                <View style={styles.timeBlock}>
+                  <Text style={styles.timeBlockLabel}>From</Text>
+                  <Text style={styles.timeBlockValue}>{formatTime(startDate)}</Text>
+                  <Text style={styles.timeBlockDate}>{formatDate(startDate)}</Text>
+                </View>
+                <Ionicons name="arrow-forward" size={20} color={Colors.textMuted} />
+                <View style={styles.timeBlock}>
+                  <Text style={styles.timeBlockLabel}>To</Text>
+                  <Text style={styles.timeBlockValue}>{formatTime(endDate)}</Text>
+                  <Text style={styles.timeBlockDate}>
+                    {sameDay ? "Same day" : formatDate(endDate)}
+                  </Text>
+                </View>
+              </View>
+            </PremiumCard>
+          </Animated.View>
+        ) : null}
 
         {/* Order Summary */}
         <Animated.View entering={FadeInDown.duration(260)}>
@@ -224,28 +256,86 @@ export default function CheckoutScreen() {
   );
 }
 
+function formatTime(d: Date): string {
+  return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
+function formatDate(d: Date): string {
+  return d.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+}
+
+function formatDuration(totalMinutes: number): string {
+  if (totalMinutes <= 0) return "0m";
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  if (h === 0) return `${m}m`;
+  if (m === 0) return `${h}h`;
+  return `${h}h ${m}m`;
+}
+
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
     backgroundColor: Colors.background,
   },
-  header: {
+  section: {
+    marginBottom: Spacing.md,
+  },
+  timeCard: {
+    marginBottom: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+    backgroundColor: Colors.surface,
+  },
+  timeHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: Spacing.sm,
-    marginBottom: Spacing.md,
+    marginTop: Spacing.xs,
   },
-  backBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: Colors.surface,
+  timeHeader: {
+    ...Typography.cardTitle,
+    fontWeight: "700",
+    flex: 1,
+  },
+  durationBadge: {
+    backgroundColor: Colors.primaryLight,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 4,
+    borderRadius: Radius.pill,
+  },
+  durationText: {
+    ...Typography.badge,
+    color: Colors.primaryDark,
+    fontWeight: "700",
+  },
+  timeRangeRow: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    ...Shadows.subtle,
+    justifyContent: "space-between",
+    gap: Spacing.md,
+    marginTop: Spacing.md,
+    backgroundColor: Colors.surfaceAlt,
+    borderRadius: Radius.md,
+    padding: Spacing.md,
   },
-  section: {
-    marginBottom: Spacing.md,
+  timeBlock: {
+    flex: 1,
+  },
+  timeBlockLabel: {
+    ...Typography.caption,
+    color: Colors.textMuted,
+  },
+  timeBlockValue: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: Colors.textPrimary,
+    marginTop: 2,
+  },
+  timeBlockDate: {
+    ...Typography.caption,
+    color: Colors.textSecondary,
+    marginTop: 2,
   },
   summaryRow: {
     flexDirection: "row",

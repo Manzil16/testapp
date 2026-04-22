@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
-import { Redirect } from "expo-router";
-import { FlatList, RefreshControl, StyleSheet, Text, View } from "react-native";
+import { useCallback, useMemo, useState } from "react";
+import { Redirect, useRouter } from "expo-router";
+import { Alert, FlatList, RefreshControl, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import Animated from "react-native-reanimated";
@@ -8,7 +8,6 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AnimatedListItem,
   Avatar,
-  BottomSheet,
   ChargerStatusBadge,
   EmptyStateCard,
   InfoPill,
@@ -22,366 +21,285 @@ import {
   Shadows,
   Spacing,
 } from "@/src/components";
-import { listChargers, updateChargerStatus, type Charger } from "@/src/features/chargers";
-import { getUserProfile, suspendUser } from "@/src/features/users/user.repository";
-import { AppConfig } from "@/src/constants/app";
+import {
+  deleteCharger,
+  listChargers,
+  type Charger,
+} from "@/src/features/chargers";
+import {
+  deleteProfile,
+  listAllProfiles,
+  suspendUser,
+} from "@/src/features/users/user.repository";
+import type { UserProfile } from "@/src/features/users/user.types";
 import { useAuth } from "@/src/features/auth/auth-context";
 import { useEntranceAnimation, useRefresh } from "@/src/hooks";
 import { useThemeColors } from "@/src/hooks/useThemeColors";
 
-function formatResponseTime(minutes: number): string {
-  if (minutes < 1) return "< 1 min";
-  if (minutes < 60) return `${Math.round(minutes)} min`;
-  const hrs = Math.floor(minutes / 60);
-  const mins = Math.round(minutes % 60);
-  return mins > 0 ? `${hrs}h ${mins}m` : `${hrs}h`;
-}
+type EntityTab = "chargers" | "hosts" | "drivers";
 
-export default function AdminTrustTabScreen() {
+export default function AdminDatabaseScreen() {
   const { profile } = useAuth();
+  const router = useRouter();
   const entranceStyle = useEntranceAnimation();
   const colors = useThemeColors();
   const queryClient = useQueryClient();
-  const [filter, setFilter] = useState<"all" | "pending" | "rejected" | "flagged">("all");
+  const [tab, setTab] = useState<EntityTab>("chargers");
   const [searchText, setSearchText] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<Charger | null>(null);
 
+  // --- Chargers ---------------------------------------------------------
   const chargersQuery = useQuery({
-    queryKey: ["chargers", "all"],
+    queryKey: ["admin", "chargers", "all"],
     queryFn: () => listChargers(),
+    enabled: tab === "chargers",
   });
+  const chargers = chargersQuery.data ?? [];
 
-  const chargers = useMemo(() => chargersQuery.data ?? [], [chargersQuery.data]);
-  const isLoading = chargersQuery.isLoading;
-
-  // Resolve host names
-  const hostIds = useMemo(() => {
-    const ids = new Set<string>();
-    for (const c of chargers) ids.add(c.hostUserId);
-    return Array.from(ids);
-  }, [chargers]);
-
-  const hostsQuery = useQuery({
-    queryKey: ["profiles", "hosts", hostIds],
-    queryFn: async () => {
-      const results: Record<string, { displayName: string; avgResponseMinutes?: number }> = {};
-      await Promise.all(
-        hostIds.map(async (id) => {
-          try {
-            const profile = await getUserProfile(id);
-            if (profile) {
-              results[id] = {
-                displayName: profile.displayName,
-                avgResponseMinutes: (profile as any).avgResponseMinutes,
-              };
-            }
-          } catch { /* skip */ }
-        })
-      );
-      return results;
-    },
-    enabled: hostIds.length > 0,
+  // --- Users ------------------------------------------------------------
+  const usersQuery = useQuery({
+    queryKey: ["admin", "profiles", searchText],
+    queryFn: () => listAllProfiles({ pageSize: 100, search: searchText || undefined }),
+    enabled: tab === "hosts" || tab === "drivers",
   });
+  const users = usersQuery.data?.items ?? [];
 
-  const hostProfiles = hostsQuery.data ?? {};
-  const hostNames: Record<string, string> = useMemo(() => {
-    const map: Record<string, string> = {};
-    for (const [id, p] of Object.entries(hostProfiles)) map[id] = p.displayName;
-    return map;
-  }, [hostProfiles]);
+  const filteredChargers = useMemo(() => {
+    const q = searchText.trim().toLowerCase();
+    if (!q) return chargers;
+    return chargers.filter((c) =>
+      `${c.name} ${c.suburb} ${c.state} ${c.hostUserId}`.toLowerCase().includes(q),
+    );
+  }, [chargers, searchText]);
 
-  const refresh = async () => {
-    await chargersQuery.refetch();
-    await hostsQuery.refetch();
-  };
+  const filteredHosts = useMemo(
+    () => users.filter((u) => u.isHost),
+    [users],
+  );
+  const filteredDrivers = useMemo(
+    () => users.filter((u) => u.isDriver && !u.isHost),
+    [users],
+  );
+
+  const refresh = useCallback(async () => {
+    if (tab === "chargers") await chargersQuery.refetch();
+    else await usersQuery.refetch();
+  }, [tab, chargersQuery, usersQuery]);
   const { refreshing, onRefresh } = useRefresh(refresh);
 
-  const normalizedSearch = searchText.trim().toLowerCase();
-
-  const watchlist = useMemo(() => {
-    const flagged = chargers.filter(
-      (item) =>
-        item.status === "pending" || item.status === "rejected" || item.verificationScore < AppConfig.VERIFICATION.flaggedThreshold
+  // --- Actions ----------------------------------------------------------
+  const confirmDeleteCharger = (c: Charger) => {
+    Alert.alert(
+      "Delete charger",
+      `Permanently delete "${c.name}"? This cannot be undone.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await deleteCharger(c.id);
+              queryClient.invalidateQueries({ queryKey: ["admin", "chargers"] });
+              queryClient.invalidateQueries({ queryKey: ["chargers"] });
+              setError(null);
+            } catch (err) {
+              setError(err instanceof Error ? err.message : "Delete failed.");
+            }
+          },
+        },
+      ],
     );
-
-    let filtered = flagged;
-    if (filter === "flagged") {
-      filtered = filtered.filter((item) => item.verificationScore < AppConfig.VERIFICATION.flaggedThreshold);
-    } else if (filter !== "all") {
-      filtered = filtered.filter((item) => item.status === filter);
-    }
-
-    if (normalizedSearch) {
-      filtered = filtered.filter((item) => {
-        const hostName = hostNames[item.hostUserId] || "";
-        const haystack = `${item.name} ${item.suburb} ${item.state} ${hostName}`.toLowerCase();
-        return haystack.includes(normalizedSearch);
-      });
-    }
-
-    return filtered;
-  }, [chargers, filter, normalizedSearch, hostNames]);
-
-  const suspend = async (hostUserId: string) => {
-    try {
-      await suspendUser(hostUserId, true);
-      queryClient.invalidateQueries({ queryKey: ["profiles"] });
-      setSelected(null);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to suspend user.");
-    }
   };
 
-  const reinstate = async (charger: Charger) => {
-    try {
-      await updateChargerStatus(charger.id, "approved", AppConfig.VERIFICATION.reinstateScore);
-      queryClient.invalidateQueries({ queryKey: ["chargers"] });
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to reinstate charger.");
-    }
+  const confirmDeleteUser = (u: UserProfile) => {
+    Alert.alert(
+      "Delete user",
+      `Permanently delete ${u.displayName || u.email}? Their chargers and bookings will be orphaned.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await deleteProfile(u.id);
+              queryClient.invalidateQueries({ queryKey: ["admin", "profiles"] });
+              setError(null);
+            } catch (err) {
+              setError(err instanceof Error ? err.message : "Delete failed.");
+            }
+          },
+        },
+      ],
+    );
   };
 
-  const reject = async (charger: Charger) => {
+  const toggleSuspend = async (u: UserProfile) => {
     try {
-      await updateChargerStatus(charger.id, "rejected", 10);
-      queryClient.invalidateQueries({ queryKey: ["chargers"] });
+      await suspendUser(u.id, !u.isSuspended);
+      queryClient.invalidateQueries({ queryKey: ["admin", "profiles"] });
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to reject charger.");
+      setError(err instanceof Error ? err.message : "Action failed.");
     }
   };
 
   if (!profile?.isAdmin) return <Redirect href="/(app)/(tabs)/discover" />;
 
+  const activeCount =
+    tab === "chargers"
+      ? filteredChargers.length
+      : tab === "hosts"
+        ? filteredHosts.length
+        : filteredDrivers.length;
+
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={["bottom"]}>
       <Animated.View style={[{ flex: 1 }, entranceStyle]}>
         <ScreenContainer scrollable={false}>
-          <Text style={Typography.pageTitle}>Trust Watchlist</Text>
-          <Text style={Typography.body}>Monitor flagged and rejected chargers.</Text>
+          <Text style={Typography.body}>
+            Browse and manage platform entities. {activeCount} result{activeCount !== 1 ? "s" : ""}.
+          </Text>
 
           <SearchBar
             value={searchText}
             onChangeText={setSearchText}
-            placeholder="Search charger, suburb, or host"
+            placeholder={
+              tab === "chargers"
+                ? "Search charger, suburb, host ID"
+                : "Search name or email"
+            }
           />
 
           <SegmentedControl
             segments={[
-              { id: "all", label: "All" },
-              { id: "pending", label: "Pending" },
-              { id: "rejected", label: "Rejected" },
-              { id: "flagged", label: "Flagged" },
+              { id: "chargers", label: "Chargers" },
+              { id: "hosts", label: "Hosts" },
+              { id: "drivers", label: "Drivers" },
             ]}
-            activeId={filter}
-            onChange={(id) => setFilter(id as any)}
+            activeId={tab}
+            onChange={(id) => setTab(id as EntityTab)}
             style={styles.segmented}
           />
 
           {error ? (
-            <EmptyStateCard icon="⚠️" title="Trust action failed" message={error} />
+            <EmptyStateCard icon="⚠️" title="Action failed" message={error} />
           ) : null}
 
-          <FlatList
-            data={watchlist}
-            keyExtractor={(item) => item.id}
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#00BFA5" />}
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.listContent}
-            renderItem={({ item, index }) => {
-              const isRejected = item.status === "rejected";
-              const connectorTypes = item.connectors.map((c) => c.type).join(", ") || "Unknown";
-              const hostName = hostNames[item.hostUserId] || item.hostUserId.slice(0, 8);
-
-              return (
+          {tab === "chargers" ? (
+            <FlatList
+              data={filteredChargers}
+              keyExtractor={(item) => item.id}
+              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.listContent}
+              renderItem={({ item, index }) => (
                 <AnimatedListItem index={index}>
                   <PressableScale
-                    style={[styles.card, isRejected && styles.cardFlagged]}
-                    onPress={() => setSelected(item)}
+                    style={styles.card}
+                    onPress={() => router.push(`/(app)/chargers/${item.id}` as any)}
                   >
-                    {/* Status accent bar */}
-                    <View
-                      style={[
-                        styles.cardAccent,
-                        {
-                          backgroundColor:
-                            item.status === "rejected"
-                              ? Colors.error
-                              : item.status === "pending"
-                              ? Colors.warning
-                              : Colors.primary,
-                        },
-                      ]}
-                    />
-
-                    <View style={styles.cardBody}>
-                      {/* Header row */}
-                      <View style={styles.cardHead}>
-                        <View style={styles.chargerIconCircle}>
-                          <Ionicons name="flash" size={18} color={Colors.warning} />
-                        </View>
-                        <View style={{ flex: 1 }}>
-                          <Text style={styles.cardTitle} numberOfLines={1}>{item.name}</Text>
-                          <Text style={styles.cardMeta}>
-                            {item.suburb}, {item.state}
-                          </Text>
-                        </View>
-                        <ChargerStatusBadge status={item.status} />
+                    <View style={styles.cardHead}>
+                      <View style={styles.iconCircle}>
+                        <Ionicons name="flash" size={18} color={Colors.primary} />
                       </View>
-
-                      {/* Specs row */}
-                      <View style={styles.specsRow}>
-                        <View style={styles.specItem}>
-                          <Ionicons name="speedometer-outline" size={13} color={Colors.textMuted} />
-                          <Text style={styles.specText}>{item.maxPowerKw} kW</Text>
-                        </View>
-                        <View style={styles.specItem}>
-                          <Ionicons name="hardware-chip-outline" size={13} color={Colors.textMuted} />
-                          <Text style={styles.specText}>{connectorTypes}</Text>
-                        </View>
-                        <View style={styles.specItem}>
-                          <Ionicons name="pricetag-outline" size={13} color={Colors.textMuted} />
-                          <Text style={styles.specText}>${item.pricingPerKwh.toFixed(2)}/kWh</Text>
-                        </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.cardTitle} numberOfLines={1}>
+                          {item.name}
+                        </Text>
+                        <Text style={styles.cardMeta}>
+                          {item.suburb}, {item.state} · {item.maxPowerKw}kW · ${item.pricingPerKwh.toFixed(2)}/kWh
+                        </Text>
                       </View>
-
-                      {/* Host row */}
-                      <View style={styles.hostRow}>
-                        <Avatar name={hostName} size="sm" />
-                        <Text style={styles.hostText}>Host: {hostName}</Text>
-                        {hostProfiles[item.hostUserId]?.avgResponseMinutes != null && (
-                          <InfoPill
-                            label={`⏱ ${formatResponseTime(hostProfiles[item.hostUserId].avgResponseMinutes!)}`}
-                            variant="info"
-                          />
-                        )}
-                      </View>
-
-                      {/* Actions */}
-                      <View style={styles.trustActions}>
-                        {item.status !== "rejected" ? (
-                          <PressableScale onPress={() => reject(item)} style={styles.suspendBtn}>
-                            <Ionicons name="close" size={16} color={Colors.error} />
-                            <Text style={styles.suspendBtnText}>Reject</Text>
-                          </PressableScale>
-                        ) : null}
-                        <PressableScale onPress={() => reinstate(item)} style={styles.reinstateBtn}>
-                          <Ionicons name="checkmark" size={16} color={Colors.primary} />
-                          <Text style={styles.reinstateBtnText}>Reinstate</Text>
-                        </PressableScale>
-                      </View>
+                      <ChargerStatusBadge status={item.status} />
+                    </View>
+                    <View style={styles.actionRow}>
+                      <PressableScale
+                        onPress={() => confirmDeleteCharger(item)}
+                        style={styles.deleteBtn}
+                      >
+                        <Ionicons name="trash-outline" size={15} color={Colors.error} />
+                        <Text style={styles.deleteBtnText}>Delete</Text>
+                      </PressableScale>
                     </View>
                   </PressableScale>
                 </AnimatedListItem>
-              );
-            }}
-            ListEmptyComponent={
-              isLoading ? null : (
-                <EmptyStateCard
-                  icon="🛡️"
-                  title="Watchlist is clear"
-                  message="No flagged chargers match current filter."
-                />
-              )
-            }
-          />
+              )}
+              ListEmptyComponent={
+                chargersQuery.isLoading ? null : (
+                  <EmptyStateCard
+                    icon="⚡"
+                    title="No chargers"
+                    message="No chargers match the current search."
+                  />
+                )
+              }
+            />
+          ) : (
+            <FlatList
+              data={tab === "hosts" ? filteredHosts : filteredDrivers}
+              keyExtractor={(item) => item.id}
+              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.listContent}
+              renderItem={({ item, index }) => (
+                <AnimatedListItem index={index}>
+                  <View style={styles.card}>
+                    <View style={styles.cardHead}>
+                      <Avatar name={item.displayName || item.email} size="sm" />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.cardTitle} numberOfLines={1}>
+                          {item.displayName || "—"}
+                        </Text>
+                        <Text style={styles.cardMeta} numberOfLines={1}>
+                          {item.email}
+                        </Text>
+                      </View>
+                      {item.isSuspended ? (
+                        <InfoPill label="Suspended" variant="error" />
+                      ) : (
+                        <InfoPill label={item.role} variant="info" />
+                      )}
+                    </View>
+                    <View style={styles.actionRow}>
+                      <PressableScale
+                        onPress={() => toggleSuspend(item)}
+                        style={styles.suspendBtn}
+                      >
+                        <Ionicons
+                          name={item.isSuspended ? "checkmark-circle-outline" : "ban-outline"}
+                          size={15}
+                          color={item.isSuspended ? Colors.primary : Colors.warning}
+                        />
+                        <Text style={[styles.suspendBtnText, { color: item.isSuspended ? Colors.primary : Colors.warning }]}>
+                          {item.isSuspended ? "Reinstate" : "Suspend"}
+                        </Text>
+                      </PressableScale>
+                      <PressableScale
+                        onPress={() => confirmDeleteUser(item)}
+                        style={styles.deleteBtn}
+                      >
+                        <Ionicons name="trash-outline" size={15} color={Colors.error} />
+                        <Text style={styles.deleteBtnText}>Delete</Text>
+                      </PressableScale>
+                    </View>
+                  </View>
+                </AnimatedListItem>
+              )}
+              ListEmptyComponent={
+                usersQuery.isLoading ? null : (
+                  <EmptyStateCard
+                    icon="👤"
+                    title={tab === "hosts" ? "No hosts" : "No drivers"}
+                    message="No users match the current search."
+                  />
+                )
+              }
+            />
+          )}
         </ScreenContainer>
       </Animated.View>
-
-      {/* Detail Bottom Sheet */}
-      <BottomSheet
-        visible={Boolean(selected)}
-        onClose={() => setSelected(null)}
-        title="Charger Detail"
-      >
-        {selected ? (
-          <View style={styles.sheetContent}>
-            {/* Header */}
-            <View style={styles.sheetHeader}>
-              <View style={styles.sheetIconCircle}>
-                <Ionicons name="flash" size={24} color={Colors.warning} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.sheetTitle}>{selected.name}</Text>
-                <Text style={styles.sheetSubtitle}>
-                  {selected.suburb}, {selected.state}
-                </Text>
-              </View>
-              <ChargerStatusBadge status={selected.status} />
-            </View>
-
-            {/* Info Grid */}
-            <View style={styles.sheetGrid}>
-              <View style={styles.sheetGridItem}>
-                <Ionicons name="speedometer-outline" size={18} color={Colors.primary} />
-                <Text style={styles.sheetGridValue}>{selected.maxPowerKw} kW</Text>
-                <Text style={styles.sheetGridLabel}>Power</Text>
-              </View>
-              <View style={styles.sheetGridItem}>
-                <Ionicons name="pricetag-outline" size={18} color={Colors.primary} />
-                <Text style={styles.sheetGridValue}>${selected.pricingPerKwh.toFixed(2)}</Text>
-                <Text style={styles.sheetGridLabel}>Per kWh</Text>
-              </View>
-              <View style={styles.sheetGridItem}>
-                <Ionicons name="hardware-chip-outline" size={18} color={Colors.primary} />
-                <Text style={styles.sheetGridValue}>
-                  {selected.connectors.map((c) => c.type).join(", ") || "N/A"}
-                </Text>
-                <Text style={styles.sheetGridLabel}>Connectors</Text>
-              </View>
-            </View>
-
-            {/* Host info */}
-            <View style={styles.sheetHostRow}>
-              <Avatar name={hostNames[selected.hostUserId] || "Host"} size="md" />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.sheetHostName}>
-                  {hostNames[selected.hostUserId] || selected.hostUserId.slice(0, 12)}
-                </Text>
-                <Text style={styles.sheetHostLabel}>Charger Host</Text>
-                {hostProfiles[selected.hostUserId]?.avgResponseMinutes != null && (
-                  <Text style={styles.sheetHostLabel}>
-                    Avg response: {formatResponseTime(hostProfiles[selected.hostUserId].avgResponseMinutes!)}
-                  </Text>
-                )}
-              </View>
-            </View>
-
-            {/* Submitted date */}
-            <View style={styles.sheetDetailRow}>
-              <Ionicons name="calendar-outline" size={16} color={Colors.textMuted} />
-              <Text style={styles.sheetDetailText}>
-                Submitted: {new Date(selected.createdAtIso).toLocaleDateString()} at{" "}
-                {new Date(selected.createdAtIso).toLocaleTimeString(undefined, {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
-              </Text>
-            </View>
-
-            {selected.amenities?.length > 0 && (
-              <View style={styles.sheetDetailRow}>
-                <Ionicons name="cafe-outline" size={16} color={Colors.textMuted} />
-                <Text style={styles.sheetDetailText}>
-                  Amenities: {selected.amenities.join(", ")}
-                </Text>
-              </View>
-            )}
-
-            {/* Suspend Host */}
-            <PressableScale
-              style={styles.suspendUserBtn}
-              onPress={() => suspend(selected.hostUserId)}
-            >
-              <Ionicons name="ban-outline" size={16} color={Colors.error} />
-              <Text style={styles.suspendUserBtnText}>Suspend Host Account</Text>
-            </PressableScale>
-          </View>
-        ) : null}
-      </BottomSheet>
     </SafeAreaView>
   );
 }
@@ -401,34 +319,24 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface,
     borderRadius: Radius.xl,
     marginBottom: Spacing.md,
-    overflow: "hidden",
-    ...Shadows.card,
-  },
-  cardFlagged: {
-    borderLeftWidth: 3,
-    borderLeftColor: Colors.error,
-  },
-  cardAccent: {
-    height: 3,
-  },
-  cardBody: {
     padding: Spacing.lg,
+    ...Shadows.card,
   },
   cardHead: {
     flexDirection: "row",
     alignItems: "center",
     gap: Spacing.md,
   },
-  chargerIconCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Colors.warningLight,
+  iconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.primaryLight,
     alignItems: "center",
     justifyContent: "center",
   },
   cardTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "700",
     color: Colors.textPrimary,
   },
@@ -436,38 +344,10 @@ const styles = StyleSheet.create({
     ...Typography.caption,
     marginTop: 1,
   },
-  specsRow: {
-    flexDirection: "row",
-    gap: Spacing.lg,
-    marginTop: Spacing.md,
-    paddingTop: Spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
-  },
-  specItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  specText: {
-    fontSize: 12,
-    fontWeight: "500",
-    color: Colors.textSecondary,
-  },
-  hostRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.sm,
-    marginTop: Spacing.md,
-  },
-  hostText: {
-    ...Typography.caption,
-    color: Colors.textSecondary,
-  },
-  trustActions: {
+  actionRow: {
     flexDirection: "row",
     gap: Spacing.sm,
-    marginTop: Spacing.lg,
+    marginTop: Spacing.md,
   },
   suspendBtn: {
     flex: 1,
@@ -475,122 +355,26 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 6,
-    backgroundColor: Colors.errorLight,
+    backgroundColor: Colors.warningLight,
     borderRadius: Radius.pill,
-    paddingVertical: 10,
+    paddingVertical: 9,
   },
   suspendBtnText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "600",
-    color: Colors.error,
   },
-  reinstateBtn: {
+  deleteBtn: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 6,
-    backgroundColor: Colors.primaryLight,
-    borderRadius: Radius.pill,
-    paddingVertical: 10,
-  },
-  reinstateBtnText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: Colors.primary,
-  },
-
-  // Bottom Sheet
-  sheetContent: {
-    gap: Spacing.md,
-  },
-  sheetHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.md,
-  },
-  sheetIconCircle: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: Colors.warningLight,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  sheetTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: Colors.textPrimary,
-  },
-  sheetSubtitle: {
-    ...Typography.caption,
-    marginTop: 2,
-  },
-  sheetGrid: {
-    flexDirection: "row",
-    gap: Spacing.sm,
-  },
-  sheetGridItem: {
-    flex: 1,
-    backgroundColor: Colors.surfaceAlt,
-    borderRadius: Radius.lg,
-    padding: Spacing.md,
-    alignItems: "center",
-    gap: 4,
-  },
-  sheetGridValue: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: Colors.textPrimary,
-    textAlign: "center",
-  },
-  sheetGridLabel: {
-    fontSize: 10,
-    fontWeight: "500",
-    color: Colors.textMuted,
-    textTransform: "uppercase",
-    letterSpacing: 0.3,
-  },
-  sheetHostRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.md,
-    backgroundColor: Colors.surfaceAlt,
-    borderRadius: Radius.lg,
-    padding: Spacing.md,
-  },
-  sheetHostName: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: Colors.textPrimary,
-  },
-  sheetHostLabel: {
-    fontSize: 11,
-    color: Colors.textMuted,
-    marginTop: 1,
-  },
-  sheetDetailRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.sm,
-  },
-  sheetDetailText: {
-    ...Typography.body,
-    color: Colors.textSecondary,
-    flex: 1,
-  },
-  suspendUserBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
     backgroundColor: Colors.errorLight,
     borderRadius: Radius.pill,
-    paddingVertical: 12,
-    marginTop: Spacing.sm,
+    paddingVertical: 9,
   },
-  suspendUserBtnText: {
-    fontSize: 14,
+  deleteBtnText: {
+    fontSize: 13,
     fontWeight: "600",
     color: Colors.error,
   },

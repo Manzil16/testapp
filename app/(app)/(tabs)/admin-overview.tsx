@@ -380,8 +380,6 @@ export default function AdminOverviewScreen() {
     <SafeAreaView style={styles.safe} edges={["bottom"]}>
       <Animated.View style={[{ flex: 1 }, entranceStyle]}>
         <ScreenContainer scrollable={false}>
-          <Text style={Typography.pageTitle}>Platform Overview</Text>
-
           {/* Stats Row */}
           <ScrollView
             horizontal

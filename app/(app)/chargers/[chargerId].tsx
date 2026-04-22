@@ -135,6 +135,8 @@ export default function ChargerDetailRoute() {
         endTimeIso: endDate.toISOString(),
         estimatedKWh: String(estimatedKWh),
         chargerName: charger.name,
+        chargerLat: String(charger.latitude),
+        chargerLng: String(charger.longitude),
         totalAmount: String(totalAmount),
         platformFee: String(platformFee),
         pricePerKwh: String(charger.pricingPerKwh),
@@ -173,12 +175,8 @@ export default function ChargerDetailRoute() {
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={["bottom"]}>
       <ScreenContainer bottomInset={112}>
-        {/* Floating header actions */}
+        {/* Floating right-side actions (share + save) — nav header provides back */}
         <View style={styles.floatingHeader}>
-          <PressableScale onPress={() => router.back()} style={styles.headerBtn}>
-            <Ionicons name="arrow-back" size={20} color={Colors.textPrimary} />
-          </PressableScale>
-          <View style={{ flex: 1 }} />
           <PressableScale onPress={handleShare} style={styles.headerBtn}>
             <Ionicons name="share-outline" size={20} color={Colors.textPrimary} />
           </PressableScale>
@@ -638,6 +636,7 @@ const styles = StyleSheet.create({
   floatingHeader: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "flex-end",
     gap: Spacing.sm,
     marginBottom: Spacing.sm,
   },

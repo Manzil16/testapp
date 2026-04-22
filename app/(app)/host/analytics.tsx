@@ -1,7 +1,6 @@
 import { useMemo } from "react";
 import { useRouter } from "expo-router";
 import {
-  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -187,16 +186,7 @@ export default function HostAnalyticsScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={12}>
-          <Ionicons name="arrow-back" size={24} color={Colors.textPrimary} />
-        </Pressable>
-        <Text style={[Typography.pageTitle, { flex: 1 }]}>Analytics</Text>
-        <Text style={styles.headerSub}>Lifetime</Text>
-      </View>
-
+    <SafeAreaView style={styles.safe} edges={["bottom"]}>
       <ScrollView
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
@@ -355,20 +345,6 @@ const styles = StyleSheet.create({
   safe: {
     flex: 1,
     backgroundColor: Colors.background,
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.md,
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.md,
-    backgroundColor: Colors.background,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  headerSub: {
-    ...Typography.caption,
-    color: Colors.textMuted,
   },
   scroll: {
     paddingHorizontal: Spacing.lg,

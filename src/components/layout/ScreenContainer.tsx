@@ -84,12 +84,12 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: Spacing.screenPadding,
-    paddingTop: Spacing.lg,
+    paddingTop: Spacing.sm,
   },
   fixedContent: {
     flex: 1,
     paddingHorizontal: Spacing.screenPadding,
-    paddingTop: Spacing.lg,
+    paddingTop: Spacing.sm,
   },
   noPadding: {
     paddingHorizontal: 0,
