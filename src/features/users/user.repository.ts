@@ -111,14 +111,29 @@ export async function listAllProfiles(options?: {
 }
 
 export async function deleteProfile(userId: string): Promise<void> {
-  const { error } = await supabase.from("profiles").delete().eq("id", userId);
+  const { data, error } = await supabase
+    .from("profiles")
+    .delete()
+    .eq("id", userId)
+    .select("id");
   if (error) throw error;
+  if (!data || data.length === 0) {
+    throw new Error(
+      "Delete blocked: you may not have admin permission, or migration 00029 has not been applied."
+    );
+  }
 }
 
 export async function suspendUser(userId: string, suspended: boolean): Promise<void> {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("profiles")
     .update({ is_suspended: suspended })
-    .eq("id", userId);
+    .eq("id", userId)
+    .select("id");
   if (error) throw error;
+  if (!data || data.length === 0) {
+    throw new Error(
+      "Suspend blocked: you may not have admin permission, or migration 00029 has not been applied."
+    );
+  }
 }

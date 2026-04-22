@@ -174,8 +174,17 @@ export async function updateChargerStatus(
 }
 
 export async function deleteCharger(chargerId: string): Promise<void> {
-  const { error } = await supabase.from("chargers").delete().eq("id", chargerId);
+  const { data, error } = await supabase
+    .from("chargers")
+    .delete()
+    .eq("id", chargerId)
+    .select("id");
   if (error) throw error;
+  if (!data || data.length === 0) {
+    throw new Error(
+      "Delete blocked: you must be the host or an admin, and migration 00029 must be applied."
+    );
+  }
 }
 
 export interface MapBounds {
